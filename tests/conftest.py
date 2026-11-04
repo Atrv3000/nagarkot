@@ -105,11 +105,12 @@ def seed_basic_catalogue(db):
         "parser": ("Parser", "system", [JOB_CREATE, JOB_UPDATE_UNFILED]),
     }
 
+    catalogue_start = datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
     for r_id, (r_name, r_types, perms) in roles_def.items():
-        role = Role(id=r_id, name=r_name, allowed_user_types=r_types, created_at=now)
+        role = Role(id=r_id, name=r_name, allowed_user_types=r_types, created_at=catalogue_start)
         db.add(role)
         for p in perms:
-            rp = RolePermission(role_id=r_id, permission=p, added_at=now)
+            rp = RolePermission(role_id=r_id, permission=p, added_at=catalogue_start)
             db.add(rp)
 
     # SoD Rules
