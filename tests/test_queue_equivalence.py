@@ -72,17 +72,17 @@ def test_queue_sql_python_equivalence_on_seeded_data(db, seed_basic_catalogue):
         )
 
 
-def test_api_queue_count_equals_items_len(db, seed_basic_catalogue):
+def test_api_queue_count_equals_items_len(seeded_client):
     """GET /me/queue returns count == len(items) from the exact same predicate."""
-    client = TestClient(app)
     headers = {"X-User-Id": "asha-rao"}
 
     # Query /me/queue with large limit to retrieve all items in queue
-    resp = client.get("/me/queue?limit=200", headers=headers)
+    resp = seeded_client.get("/me/queue?limit=200", headers=headers)
     assert resp.status_code == 200
     data = resp.json()
     assert "count" in data
     assert "items" in data
+    assert data["count"] > 0
     # When limit is greater than or equal to total, count == len(items)
     if data["next_cursor"] is None:
         assert data["count"] == len(data["items"])

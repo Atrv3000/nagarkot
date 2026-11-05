@@ -156,14 +156,14 @@ def test_ops_admin_override_cannot_bypass_sod_or_touch_filed_without_approval(db
     assert any(c.code == "SOD_OK" and not c.passed for c in dec_sod.checks)
 
 
-def test_client_user_redaction_and_isolation(db, seed_basic_catalogue):
+def test_client_user_redaction_and_isolation(seeded_client):
     """Client user only sees their own client's shipments and internal fields are redacted."""
-    client = TestClient(app)
     headers = {"X-User-Id": "rajesh-gupta"}
 
-    resp = client.get("/jobs", headers=headers)
+    resp = seeded_client.get("/jobs", headers=headers)
     assert resp.status_code == 200
     data = resp.json()
+    assert len(data["items"]) > 0
     for item in data["items"]:
         # Only client C01
         assert item["client_id"] == "C01"

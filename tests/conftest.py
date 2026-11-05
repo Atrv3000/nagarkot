@@ -4,9 +4,13 @@ import pytest
 from datetime import datetime, timezone, timedelta
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+from fastapi.testclient import TestClient
 
-from app.db import Base, init_db
-from app.clock import set_time, reset_time
+from app.main import app
+from app.db import Base, init_db, get_db
+from app.clock import set_time, reset_time, get_now
+from scripts.seed import seed as run_seed
 from app.models import (
     User,
     Branch,
@@ -54,6 +58,7 @@ def db_engine():
     engine = create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
     )
     init_db(target_engine=engine)
     yield engine
@@ -68,6 +73,39 @@ def db(db_engine):
     yield session
     session.rollback()
     session.close()
+
+
+@pytest.fixture
+def client(db_engine):
+    """Provide a TestClient with app.db.get_db dependency overridden to use the test engine."""
+    Session = sessionmaker(bind=db_engine, autocommit=False, autoflush=False)
+
+    def override_get_db():
+        session = Session()
+        try:
+            yield session
+        finally:
+            session.close()
+
+    app.dependency_overrides[get_db] = override_get_db
+    test_client = TestClient(app, raise_server_exceptions=True)
+    yield test_client
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def seeded_db(db):
+    """Provide a test database session seeded with full standard seed data."""
+    now = datetime(2026, 11, 4, 12, 0, 0, tzinfo=timezone.utc)
+    set_time(now)
+    run_seed(db, now=now)
+    return db
+
+
+@pytest.fixture
+def seeded_client(seeded_db, client):
+    """Provide a TestClient against the seeded test database."""
+    return client
 
 
 @pytest.fixture

@@ -18,6 +18,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.db import engine, init_db, SessionLocal
+from app.clock import get_now
+from sqlalchemy.orm import Session
 from app.models import (
     User,
     Branch,
@@ -51,12 +53,7 @@ from app.permissions import (
 )
 
 
-def seed():
-    print("Initializing database tables and triggers...")
-    init_db()
-
-    db = SessionLocal()
-
+def seed(db: Session, now=None):
     # Clear existing data
     db.query(Approval).delete()
     db.query(Job).delete()
@@ -67,12 +64,11 @@ def seed():
     db.query(User).delete()
     db.query(Client).delete()
     db.query(Branch).delete()
-    # Note: audit_log table cannot be deleted via DELETE due to triggers!
-    # If recreating from scratch, we can drop and recreate or let init_db handle
     db.commit()
 
     random.seed(42)
-    now = datetime(2026, 11, 4, 12, 0, 0, tzinfo=timezone.utc)
+    if now is None:
+        now = datetime(2026, 11, 4, 12, 0, 0, tzinfo=timezone.utc)
     t_start = now - timedelta(days=35)
     t_catalogue = datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
 
@@ -629,14 +625,28 @@ def seed():
     total_users = db.query(User).count()
     total_grants = db.query(Grant).count()
     total_audits = db.query(AuditLog).count()
-    db.close()
+    return {
+        "users": total_users,
+        "grants": total_grants,
+        "jobs": total_jobs,
+        "audits": total_audits,
+    }
 
-    print("\nDatabase seeded successfully!")
-    print(f"Total Users:  {total_users}")
-    print(f"Total Grants: {total_grants}")
-    print(f"Total Jobs:   {total_jobs}")
-    print(f"Total Audits: {total_audits}")
+
+def main():
+    print("Initializing database tables and triggers...")
+    init_db()
+    db = SessionLocal()
+    try:
+        stats = seed(db)
+        print("\nDatabase seeded successfully!")
+        print(f"Total Users:  {stats['users']}")
+        print(f"Total Grants: {stats['grants']}")
+        print(f"Total Jobs:   {stats['jobs']}")
+        print(f"Total Audits: {stats['audits']}")
+    finally:
+        db.close()
 
 
 if __name__ == "__main__":
-    seed()
+    main()
