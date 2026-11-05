@@ -13,6 +13,7 @@ This document provides a timed walkthrough demonstrating how the Nagarkot Access
    ```bash
    python scripts/seed.py
    ```
+> **Repeatable Takes Note**: `bash scripts/demo.sh` automatically re-seeds the database at the start of every run. If executing manual curl commands across multiple takes, re-run `python scripts/seed.py` before each take to reset mutable showcase shipments (`JOB-SHOWCASE-01` and `JOB-SHOWCASE-03`) to their initial stages.
 
 ---
 

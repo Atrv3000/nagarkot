@@ -6,7 +6,22 @@ set -e
 
 BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
 
+# Auto-detect python interpreter in virtualenv or PATH
+PYTHON_BIN="python"
+if [ -f ".venv/bin/python" ]; then
+    PYTHON_BIN=".venv/bin/python"
+elif [ -f ".venv/Scripts/python.exe" ]; then
+    PYTHON_BIN=".venv/Scripts/python.exe"
+fi
+
 echo "========================================================================"
+echo " 0. PRE-FLIGHT: RESET DATABASE TO DETERMINISTIC SEED STATE"
+echo " Ensures clean, repeatable execution across multiple demo takes."
+echo "========================================================================"
+"$PYTHON_BIN" scripts/seed.py
+echo "--> [PASS] Step 0: Database freshly seeded for demo take"
+
+echo -e "\n========================================================================"
 echo " 1. SYSTEM HEALTH CHECK"
 echo "========================================================================"
 curl -s "${BASE_URL}/health" | python -c "

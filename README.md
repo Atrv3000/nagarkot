@@ -1,6 +1,6 @@
 # Nagarkot Forwarders - Access Control Service (ACS)
 
-> **Production-grade Access Control & Policy Decision Service for Nagarkot Forwarders Pvt. Ltd.**  
+> **Access Control & Policy Decision Service for Nagarkot Forwarders Pvt. Ltd.**  
 > Built with FastAPI, SQLAlchemy 2.0, SQLite WAL, and deterministic zero-trust authorization.
 
 ---
@@ -156,16 +156,16 @@ Measured locally on **Windows 11 (Intel64 12-core, Python 3.13, SQLite 3.x WAL m
 
 | Scenario | Min (ms) | Mean (ms) | p50 (ms) | p90 (ms) | p95 (ms) | p99 (ms) | Target SLA | Result |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **GET /me/queue** (Asha Rao - National Maker) | 129.22 | 148.81 | 143.07 | 169.11 | **189.33** | 233.08 | < 200 ms | **PASS** |
-| **GET /me/queue** (Rohit Mehta - Restricted Checker) | 609.73 | 688.06 | 680.06 | 746.90 | **794.55** | 892.54 | < 200 ms | *(See analysis)* |
-| **GET /me/queue** (Pooja Sharma - Checker + Delhi Cover) | 133.59 | 151.27 | 148.75 | 167.97 | **178.96** | 200.13 | < 200 ms | **PASS** |
-| **GET /me/queue** (Neha Kulkarni - Filer MUM & NS) | 66.38 | 74.66 | 73.80 | 82.00 | **87.01** | 100.21 | < 200 ms | **PASS** |
-| **GET /jobs** (Asha Rao - Staff View First Page) | 31.38 | 36.65 | 34.47 | 44.87 | **47.04** | 64.49 | < 200 ms | **PASS** |
-| **GET /jobs** (Rajesh Gupta - Client User C01 View) | 229.80 | 260.74 | 259.55 | 285.86 | **295.14** | 324.02 | < 200 ms | *(See analysis)* |
+| **GET /me/queue** (Asha Rao - National Maker) | 103.06 | 137.16 | 135.08 | 149.22 | **160.25** | 170.20 | < 200 ms | **PASS** |
+| **GET /me/queue** (Rohit Mehta - Restricted Checker) | 560.39 | 645.45 | 646.41 | 676.49 | **691.92** | 725.22 | < 200 ms | *(See analysis)* |
+| **GET /me/queue** (Pooja Sharma - Checker + Delhi Cover) | 103.72 | 141.07 | 138.44 | 156.09 | **169.57** | 193.95 | < 200 ms | **PASS** |
+| **GET /me/queue** (Neha Kulkarni - Filer MUM & NS) | 56.86 | 75.47 | 73.72 | 83.92 | **86.23** | 101.35 | < 200 ms | **PASS** |
+| **GET /jobs** (Asha Rao - Staff View First Page) | 26.78 | 35.84 | 34.83 | 42.38 | **45.07** | 50.25 | < 200 ms | **PASS** |
+| **GET /jobs** (Rajesh Gupta - Client User C01 View) | 160.94 | 251.74 | 244.67 | 269.04 | **290.67** | 614.00 | < 200 ms | *(See analysis)* |
 
 ### Analysis & Production Guidance:
-- Broad queries (such as staff general listings and queues for Asha Rao, Pooja Sharma, and Neha Kulkarni) comfortably achieve p95 latencies between **47 ms and 189 ms** under SQLite WAL mode with zero caching.
-- Restrictive multi-column scope filters (e.g. Rohit Mehta filtering simultaneously on `client_id = 'C01'`, `branch_id = 'BR-MUM'`, and `direction = 'IMPORT'` across 200,000 rows, or Rajesh Gupta filtering on `client_id = 'C01'`) require scanning SQLite B-tree index intersections where query execution takes ~260–790 ms in single-file SQLite without partitioned tables.
+- Broad queries (such as staff general listings and queues for Asha Rao, Pooja Sharma, and Neha Kulkarni) comfortably achieve p95 latencies between **45 ms and 170 ms** under SQLite WAL mode with zero caching.
+- Restrictive multi-column scope filters (e.g. Rohit Mehta filtering simultaneously on `client_id = 'C01'`, `branch_id = 'BR-MUM'`, and `direction = 'IMPORT'` across 200,000 rows, or Rajesh Gupta filtering on `client_id = 'C01'`) require scanning SQLite B-tree index intersections where query execution takes ~250–690 ms in single-file SQLite without partitioned tables.
 - In enterprise production (e.g., PostgreSQL with table partitioning by branch/client or a lightweight Redis index), these filtered queries execute in < 25 ms. Zero caching was chosen for this service to guarantee instant, zero-lag revocation security.
 
 ---
@@ -255,4 +255,4 @@ curl -s -X POST "http://127.0.0.1:8000/grants" \
   - uvicorn (ASGI web server)
   - pydantic v2 (schema validation, field aliases, model serialization)
 
-**Submitted by**: `<YOUR NAME>`, `<DATE>`; tools used: `<FILL IN>`
+**Submitted by**: Atharva (Atrv3000), November 5, 2026; tools used: Python 3.11+, FastAPI, SQLAlchemy 2.0, SQLite WAL, pytest, httpx, uvicorn, Git, Antigravity AI assistant
