@@ -168,6 +168,10 @@ def parse_cursor(cursor_str: Optional[str]) -> Optional[Tuple[datetime, str]]:
         return None
     try:
         ts_part, job_id = cursor_str.split("|", 1)
+        # Handle unencoded '+' that query string decoders convert to space
+        if " " in ts_part and "+" not in ts_part:
+            parts = ts_part.rsplit(" ", 1)
+            ts_part = "+".join(parts)
         dt = datetime.fromisoformat(ts_part)
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
