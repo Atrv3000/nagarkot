@@ -244,11 +244,15 @@ curl -s -X POST "http://127.0.0.1:8000/grants" \
 
 ---
 
-## 8. Sources & AI Assistance
+## 8. Sources and AI Assistance
 
-- **Frameworks & Libraries**:
-  - FastAPI 0.115 & Pydantic v2 for typed validation and OpenAPI schema generation.
-  - SQLAlchemy 2.0 for relational query compilation and bulk operations.
-  - SQLite with Write-Ahead Logging (WAL) and native relational triggers.
-- **AI Assistance**:
-  - Developed with pair-programming assistance from Antigravity (Google DeepMind Advanced Agentic Coding). AI assisted with architecting the 8-stage decision pipeline, drafting test fixtures, and verifying keyset pagination equivalence.
+- **AI Assistance**: An AI coding assistant was used for scaffolding, writing boilerplate tests, and drafting documentation. Every design decision and line of policy logic was reviewed, verified, and tested by the author.
+- **External Libraries & Documentation Consulted**:
+  - FastAPI (documentation & OpenAPI routing)
+  - SQLAlchemy 2.0 (core query compilation, hybrid properties, bulk mappings)
+  - SQLite documentation (WAL mode, index optimizations, relational trigger syntax)
+  - pytest & httpx (test isolation fixtures, ASGI test client lifecycle)
+  - uvicorn (ASGI web server)
+  - pydantic v2 (schema validation, field aliases, model serialization)
+
+**Submitted by**: `<YOUR NAME>`, `<DATE>`; tools used: `<FILL IN>`
