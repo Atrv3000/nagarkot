@@ -1,7 +1,7 @@
 """FastAPI application initialization, router registration, and lifecycle events."""
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.db import init_db
@@ -54,6 +54,12 @@ app.include_router(grants.router)
 app.include_router(roles.router)
 app.include_router(users.router)
 app.include_router(audit.router)
+
+
+@app.get("/", include_in_schema=False)
+def root():
+    """Redirect root path to interactive Swagger documentation."""
+    return RedirectResponse(url="/docs")
 
 
 @app.exception_handler(Exception)
