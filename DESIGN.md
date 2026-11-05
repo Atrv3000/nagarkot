@@ -1,222 +1,109 @@
-# System Design & Architecture Document: Nagarkot Access Control Service
+# System Design: Nagarkot Access Control Service
 
-## 1. Domain Context & The Core Problem
-Nagarkot Forwarders Pvt. Ltd. is a licensed customs brokerage company operating across 5 Indian branches (Mumbai-Fort, Nhava Sheva, Delhi-ICD, Chennai, Kolkata) handling approximately 120 staff members and thousands of import/export shipments annually.
+## 1. Domain Context & Problem
+Nagarkot Forwarders Pvt. Ltd. is a licensed customs brokerage (~120 staff, 5 branches: Mumbai-Fort, Nhava Sheva, Delhi-ICD, Chennai, Kolkata) clearing air and sea shipments (FCL/LCL). In customs clearance, unauthorized alteration of a filed shipping bill or bill of entry triggers statutory fines, cargo impoundment, and license suspension under the Indian Customs Act.
 
-The service addresses an acute vulnerability: a filed shipment was altered by someone who had no business touching it. In international customs brokerage, an unverified alteration on a filed shipping bill or bill of entry triggers punitive regulatory penalties, cargo blacklisting, and revocation of customs brokerage licenses under the Indian Customs Act. 
-
-The mandate of this service is simple, robust, and absolute: **decide who may do what on which job (shipment), enforce separation of duties, maintain an immutable audit trail, and guarantee zero-trust fail-closed security.**
+Following an incident where a filed job was altered without authorization or clear ownership, this service provides an authoritative policy decision engine answering: **who may do what on which job, why, and who could have done so historically?** It enforces separation of duties, fail-closed zero-trust evaluation, and compiles policies directly into SQL for high-volume operational queues.
 
 ---
 
-## 2. Core Architecture & Data Model
-
-### 2.1 The Multidimensional Job Entity
-A job represents a discrete cargo shipment progressing through regulatory milestones:
-$$\text{Job} = (\text{client\_id}, \text{branch\_id}, \text{direction}, \text{mode}, \text{stage}, \text{cycle})$$
-- **Direction**: `IMPORT` or `EXPORT`
-- **Mode**: `AIR`, `FCL` (Full Container Load), `LCL` (Less than Container Load)
-- **Lifecycle Stages**: `CONFIRMED` $\to$ `PREPARED` $\to$ `CHECKED` $\to$ `FILED`
-- **Terminal & Exceptional Stages**: `CANCELLED`, `REOPENED`
-- **Cycle**: Integer incremented upon reopening to isolate operational accountability across iterations.
-
-### 2.2 Roles as Data vs Code
-Permissions form a fixed, immutable catalogue defined in code (`app/permissions.py`) because code dictates execution logic. Roles, however, are **data** (`roles` and `role_permissions` tables). Each role permission mapping carries temporal attributes (`added_at`, `removed_at`), allowing new operational roles to be defined and modified at runtime without software redeployment while retaining total fidelity for historical queries.
-
-### 2.3 Explicit Grants & Scope Matching
-Authorization is represented through `Grant` rows:
-$$\text{Grant} = (U, R, C, B, D, M, \text{effect}, \text{valid\_from}, \text{valid\_to}, \text{revoked\_at})$$
-Where $C, B, D, M$ represent dimensional filters. A `NULL` value denotes a universal wildcard (`ALL`). 
-- **Precedence Rule**: Explicit `DENY` grants unconditionally override `ALLOW` grants.
-- **Grant Immutability**: Grants are append-only. A grant is never deleted; revocation sets `revoked_at` and `revoked_by`.
+## 2. Domain Model & Key Concepts
+- **Jobs**: Shipments defined by four dimensions: Client, Branch, Direction (`IMPORT`, `EXPORT`), and Mode (`AIR`, `FCL`, `LCL`). Jobs progress sequentially: `CONFIRMED` -> `PREPARED` -> `CHECKED` -> `FILED`, with terminal stage `CANCELLED` and exceptional stage `REOPENED`. Every reopening increments a `cycle` counter, isolating audit accountability across workflow iterations.
+- **Assigned_to is a Soft Hint**: `assigned_to` routes work to personal queues, but never gates permissions. Qualified colleagues within scope may act on unassigned jobs or cover for absent peers.
+- **Grants & NULL Wildcards**: Grants bind a user to a role over a 4D scope: `(client_id, branch_id, direction, mode)`. `NULL` acts as a universal wildcard (`ALL`), enabling concise grants without combinatorial rows. Grants are append-only with `valid_from`, `valid_to`, and `revoked_at`.
+- **Roles as Data, Permissions in Code**: Permissions are fixed code constants (`app/permissions.py`) guarding endpoints. Roles are mutable database records (`roles`, `role_permissions`) with versioned membership (`added_at`, `removed_at`), allowing runtime role adjustments without code deployment.
 
 ---
 
-## 3. The 8-Stage Decision Engine Pipeline
-
-Every API action invokes the deterministic decision engine `decide(user_id, action, job, at=now)`. The pipeline evaluates all checks to capture a full audit trace, then determines the outcome based on strict precedence:
-
-```mermaid
-flowchart TD
-    Start([Evaluate Action Request]) --> C1{1. User Known & Type Valid?}
-    C1 -- No --> Deny1[DENY: USER_UNKNOWN / CLIENT_USER_RESTRICTED]
-    C1 -- Yes --> C2{2. User Active?}
-    C2 -- Absent & Action != View --> Deny2[DENY: USER_ABSENT]
-    C2 -- Active / View --> C3{3. Job Attributes Complete?}
-    C3 -- Incomplete --> Deny3[DENY: JOB_INCOMPLETE]
-    C3 -- Complete --> C4{4. Action in Catalogue?}
-    C4 -- Unknown --> Deny4[DENY: ACTION_UNKNOWN]
-    C4 -- Known --> C5{5. Stage Valid for Action?}
-    C5 -- Invalid --> Deny5[DENY: STAGE_INVALID]
-    C5 -- Valid --> C6{6. Grant Covers Scope?}
-    C6 -- Explicit Deny --> Deny6A[DENY: EXPLICIT_DENY]
-    C6 -- No Grant --> Deny6B[DENY: NO_GRANT]
-    C6 -- Allowed --> C7{7. Separation of Duties OK?}
-    C7 -- Conflict --> Deny7[DENY: SOD_VIOLATION]
-    C7 -- OK --> C8{8. Reason Provided?}
-    C8 -- Missing --> Deny8[DENY: REASON_REQUIRED]
-    C8 -- OK --> Sensitive{Sensitive Action?}
-    Sensitive -- cancel_filed / reopen --> NeedsApp[OUTCOME: NEEDS_APPROVAL]
-    Sensitive -- Normal Action --> Allow[OUTCOME: ALLOW]
-```
-
-### Precedence Hierarchy:
-1. `USER_KNOWN`: Unknown user ID or incompatible user type (e.g. client user attempting operational actions).
-2. `USER_ACTIVE`: Absent staff cannot act (operational rights suspended; read view preserved).
-3. `JOB_DATA_COMPLETE`: Missing dimensional attributes or malformed stages fail closed.
-4. `ACTION_KNOWN`: Action must exist in permission catalogue.
-5. `STAGE_VALID`: Enforces workflow state transitions.
-6. `GRANT_COVERS_SCOPE`: Evaluates temporal grants, wildcards, and explicit deny overrides.
-7. `SOD_OK`: Four-eyes checks (Maker $\neq$ Checker, Requester $\neq$ Approver).
-8. `REASON_PROVIDED`: Mandatory descriptive reason for override and sensitive actions.
+## 3. Explicit Architectural Trade-Offs
+1. **Roles as Data vs. Code**: Hardcoded role enums require software deployments for organizational changes. Versioned database rows enable runtime administrative role creation while preserving historical audit accuracy.
+2. **NULL Wildcards vs. Cross-Product Scopes**: Expanding national grants across all dimensions would generate 15,000 rows per user. Universal wildcards (`NULL`) keep profiles minimal (~1–5 rows), avoiding index bloat.
+3. **Deny-Wins vs. Specificity Scoring**: Specificity scoring introduces brittle precedence rules. We enforce absolute **Deny-Wins**: if any active matching grant has `effect = deny`, access is unconditionally denied.
+4. **Compile-to-SQL vs. Python In-Memory Filtering**: Ingesting 200,000 jobs into Python memory exhausts RAM and breaks pagination. Compiling decision rules into SQL `WHERE` clauses offloads filtering to SQLite B-tree indexes, ensuring fast keyset pagination matching single-job decisions.
+5. **Zero Decision Caching vs. Redis**: Redis caching introduces stale authorization windows where revoked staff retain access until TTL expiry. Single-job SQL evaluations execute in milliseconds; omitting caching guarantees instant revocation without cache invalidation bugs.
 
 ---
 
-## 4. Answers to the 14 Standard Design Questions
+## 4. The 8-Stage Decision Pipeline
+Every evaluation (`decide()`) executes an 8-stage deterministic pipeline:
+1. `USER_KNOWN`: Caller exists and user type is valid (client users blocked from operational mutations).
+2. `USER_ACTIVE`: Absent staff cannot perform operational mutations (read access preserved).
+3. `JOB_DATA_COMPLETE`: Shipment attributes and stages are complete and valid.
+4. `ACTION_KNOWN`: Action exists in the permission catalogue.
+5. `STAGE_VALID`: Action matches current lifecycle stage (e.g. cannot check a FILED job).
+6. `GRANT_COVERS_SCOPE`: Caller holds an active allow grant covering the 4D scope with no overriding deny grant.
+7. `SOD_OK`: Four-eyes checks (Maker cannot Check own preparation; Requester cannot approve own sensitive action).
+8. `REASON_PROVIDED`: Mandatory justification supplied for overrides or sensitive requests.
+
+---
+
+## 5. Answers to the 14 Standard Questions
 
 ### Q1: Should everyone see everything? Who sees what vs who may act?
-**Answer**: Absolutely not. We separate visibility (`job.view`) from operational agency (`job.prepare`, `job.check`, `job.file`). Visibility is enforced at the database layer via `compile_jobs_view_predicate()` in SQL:
-- Staff members only see shipments matching their active `job.view` grants.
-- Client users are strictly isolated to shipments matching their assigned `client_id`, with all internal operational data (internal notes, assigned personnel, preparers, checkers, filers) redacted from JSON responses.
-- Acting requires both visibility and an active operational grant matching the shipment's 4-dimensional scope.
+No. Visibility (`job.view`) is decoupled from operational agency. Visibility is enforced in SQL queries via `compile_jobs_view_predicate()`: staff see shipments within their branch or client grants, while client users see only their own `client_id` with internal notes, assigned handlers, and staff identities redacted. Operational actions require explicit matching operational grants.
 
 ### Q2: How to describe someone who is Maker for every client but Checker for only a few? Someone who is Checker for one client at one branch, imports only?
-**Answer**: Through composable, dimensional `Grant` records:
-- **Asha Rao** (Maker everywhere, Checker for C03, C05, C07):
-  - Row 1: `user_id="asha-rao"`, `role="maker"`, scope: `(client=NULL, branch=NULL, dir=NULL, mode=NULL)` [Wildcard].
-  - Rows 2–4: `user_id="asha-rao"`, `role="checker"`, scope: `client="C03"`, `client="C05"`, `client="C07"`.
-- **Rohit Mehta** (Checker for C01, Mumbai-Fort, Imports only):
-  - Row 1: `user_id="rohit-mehta"`, `role="checker"`, scope: `(client="C01", branch="BR-MUM", direction="IMPORT", mode=NULL)`.
-  Any action attempted outside this exact tuple (e.g. exports or other branches) fails with `NO_GRANT`.
+Through composable dimensional grants. A national Maker with narrow Checker access holds one wildcard Maker grant `(client=ALL, branch=ALL, dir=ALL, mode=ALL)` and targeted Checker grants for specific clients (e.g. C03, C05). A restricted officer (Rohit Mehta) holds a single grant: `role='checker', client='C01', branch='BR-MUM', direction='IMPORT', mode=ALL`. Actions outside that scope fail with `NO_GRANT`.
 
 ### Q3: Person who prepared a checklist is also qualified to approve it?
-**Answer**: Qualification does not equate to permission on a specific job. While a senior officer may hold both `Maker` and `Checker` roles (e.g., Karan Shah at Chennai), the system enforces runtime **Separation of Duties (SoD)** per job cycle:
-$$\text{Check Check: } \text{job.prepared\_by} \neq \text{caller.id}$$
-If the same user prepared the shipment in the current cycle, `decide()` returns `SOD_VIOLATION_MAKER_CHECKER`. The four-eyes principle is non-negotiable.
+Qualification does not grant authorization on a specific shipment. Even if a user holds both Maker and Checker roles (e.g. Karan Shah), the engine enforces runtime Separation of Duties (SoD): `job.prepared_by != caller.id` for the current cycle. If the same user prepared the shipment, the check is denied with `SOD_VIOLATION_MAKER_CHECKER`. The four-eyes principle is non-negotiable.
 
 ### Q4: Person responsible for a job is absent?
-**Answer**:
-1. Marking a user absent (`PATCH /users/{id}/status` $\to$ `absent`) immediately suspends their operational rights (`USER_ACTIVE` check fails).
-2. The user's assigned in-flight jobs are automatically unassigned and returned to the branch pool via `auto_unassign_ineligible_jobs()`.
-3. Coverage is handled via time-bounded grants specifying `cover_for_user_id` and `valid_to` (e.g., Pooja Sharma holds a 7-day cover grant as Maker for Delhi-ICD covering Imran Shaikh). Once `valid_to` passes, access expires automatically without manual intervention.
+When a worker is marked absent, operational rights are immediately suspended while read-only view is retained. In-flight jobs assigned to them are automatically unassigned and returned to the branch queue. Absence coverage is handled via time-bounded grants specifying `cover_for_user_id` and `valid_to` (e.g. Pooja Sharma covering Delhi for Imran Shaikh). Once `valid_to` lapses, cover access terminates automatically.
 
 ### Q5: Jobs a person is halfway through when their responsibilities change?
-**Answer**:
-When an operational grant is revoked, `revoke_grant()` executes an atomic database inspection:
-- It scans all in-flight jobs (`CONFIRMED`, `PREPARED`, `CHECKED`, `REOPENED`) assigned to that user.
-- It tests if the user still holds valid permission for the job's next required action.
-- If not, it sets `job.assigned_to = NULL`, writes an `AUTO_UNASSIGNED` audit record with before/after snapshots, and returns the shipment to the branch queue. History is preserved; the shipment is never stranded.
+When a user's grant is revoked, `revoke_grant()` runs an atomic sweep (`auto_unassign_ineligible_jobs()`). It inspects in-flight jobs assigned to that user; if the user no longer holds permission for the job's next required action, the job is unassigned (`assigned_to = NULL`), an audit event is logged, and the shipment returns to the pool for eligible colleagues to pick up.
 
 ### Q6: Who can cancel a filed job or reopen a closed one, and what should it take?
-**Answer**:
-Once a job is `FILED`, ordinary staff cannot alter it. Sensitive actions (`cancel_filed`, `reopen`) mandate a **two-person rule**:
-1. An authorized staff member with `job.cancel_filed` or `job.reopen` submits an action with a mandatory reason.
-2. The decision engine returns `outcome = "NEEDS_APPROVAL"` and creates an `Approval` record with status `pending`.
-3. An `Approver` holding `job.approve_sensitive` reviews the request.
-4. The system validates:
-   - $\text{approver.id} \neq \text{requested\_by}$ (self-approval prohibited).
-   - The job stage has not changed concurrently (fail-closed stale check).
-5. Upon approval, reopening increments the `cycle` counter and clears previous cycle handlers (`prepared_by`, `checked_by`, `filed_by`).
+Filed shipments represent legal declarations submitted to Indian Customs and cannot be altered directly. Cancelling a filed job or reopening a closed one requires a two-person rule: an authorized user submits a request with a mandatory reason, transitioning it to `NEEDS_APPROVAL`. A distinct Compliance Approver (`job.approve_sensitive`) must review and approve it; self-approval is blocked by SoD guards.
 
 ### Q7: A client's own employee needs to follow their shipments?
-**Answer**:
-Client users are first-class directory entities with `type = "client"` and mandatory `client_id`:
-- Assigned the `Client Viewer` role (`job.view`).
-- Restricted at the engine level: `USER_KNOWN` immediately rejects any non-view action with `CLIENT_USER_RESTRICTED`.
-- Restricted at the database query level: `compile_jobs_view_predicate()` appends `Job.client_id == user.client_id`.
-- Internal fields (`internal_notes`, `assigned_to`, `prepared_by`, `checked_by`, `filed_by`) are completely redacted in serialization.
+Client employees are registered with `type = 'client'` and a mandatory `client_id`. They receive the `Client Viewer` role (`job.view`). The decision engine strictly blocks them from operational mutations (`CLIENT_USER_RESTRICTED`), SQL queries enforce `Job.client_id == user.client_id`, and API responses strip internal notes, assigned handlers, and staff identities.
 
 ### Q8: Admin needs to fix a stuck job? Admin tries to make themselves more powerful?
-**Answer**:
-- **Fixing a stuck job**: Ops Admin holds `job.override`, allowing `override_send_back` (rolling a job back from `PREPARED` to `CONFIRMED` or `CHECKED` to `PREPARED`) or reassignment. This requires a mandatory descriptive reason and is permanently flagged `is_override = true` in the audit log. **Ops Admin can never bypass SoD and can never alter a FILED job without two-person approval.**
-- **Preventing self-escalation**:
-  - Nobody can create, modify, or revoke a grant for themselves (`grantor.id != target_user_id`).
-  - Nobody can edit the permissions of a role they currently hold an active grant for.
-  - Scope containment forbids an admin with Mumbai scope from granting Delhi or national scope.
-  - Access Admin cannot grant privileged roles (`super_admin`, `approver`, `ops_admin`) without `access.manage_privileged`.
-  - Lock-out guard prevents revoking the last active Super Admin grant.
+Ops Admins hold `job.override`, allowing `override_send_back` or reassigning stuck shipments with mandatory justification, but cannot bypass SoD or alter FILED jobs. Self-escalation is prevented by multi-layer guards: users cannot grant or revoke roles for themselves, cannot alter permissions on roles they hold, cannot grant scopes broader than their own, and cannot grant privileged roles without `access.manage_privileged`.
 
 ### Q9: Automated parser that creates/updates jobs overnight?
-**Answer**:
-The parser is a directory user with `type = "system"` and role `Parser`:
-- Holds permissions `job.create` and `job.update_unfiled`.
-- Strictly blocked from advancing workflow stages (`prepare`, `check`, `file`).
-- Modifying unfiled shipments is restricted strictly to `CONFIRMED` stage and allow-listed fields (`internal_notes`, `assigned_to`).
-- All parser requests pass the batch identifier via header `X-Run-Id`, persisted in `audit_log.actor_run_id` for automated traceability.
+The EDI parser is a `system` user holding the `Parser` role with permissions `job.create` and `job.update_unfiled`. It is strictly forbidden from advancing workflow stages (`prepare`, `check`, `file`). It can only update unfiled `CONFIRMED` jobs on allow-listed fields (`internal_notes`, `assigned_to`). Each automated run passes an `X-Run-Id` header, recorded in `audit_log.actor_run_id` for batch traceability.
 
 ### Q10: How to answer "why can she do this and he can't?"
-**Answer**:
-Via `GET /explain/compare?users=user_a,user_b&action=...&job_id=...`:
-The endpoint evaluates both users through the identical 8-stage decision pipeline, compares their failure codes and matched grant IDs, and synthesizes a plain-English explanation (e.g., *"User 'priya-nair' is ALLOWED via grants ['grt-priya-chk-all'], whereas User 'faisal-khan' is DENIED due to NO_GRANT"*).
+Via `GET /explain/compare?users=priya,faisal&action=check&job_id=JOB-05`. The endpoint evaluates both users through the identical 8-stage decision pipeline, compares evaluated stages, matched grants, and failure reason codes, and generates a structured side-by-side breakdown explaining the exact differential (e.g. Priya holds an active Checker grant covering Mumbai, whereas Faisal holds only read-only Viewer access).
 
 ### Q11: How to answer "who could have changed this job on the 3rd?"
-**Answer**:
-Via `GET /jobs/{id}/who-could?action=...&at=2026-10-03T...`:
-1. The engine time-travels to timestamp $T$.
-2. It evaluates active grants at $T$, role permissions active at $T$ (`added_at <= T < removed_at`), and user absence status reconstructed from audit events at $T$.
-3. It reconstructs the job's historical stage and preparer at $T$ from audit event replays.
-4. It tests all directory users and returns the exact list of individuals authorized at that moment, paired with the actual actor recorded in the audit log.
+Via `GET /jobs/{id}/who-could?action=prepare&at=2026-10-03T14:00:00Z`. The engine reconstructs system state at timestamp T by evaluating historical grant validity, versioned role permissions (`added_at <= T < removed_at`), absence history, and the job's stage replayed from audit logs. It evaluates every directory user against that historical snapshot and correlates eligible users with the actual recorded actor.
 
 ### Q12: How to introduce a new kind of role next quarter while engineering is busy?
-**Answer**:
-Roles are data, not code. An authorized administrator (`roles.manage`) issues `POST /roles` and `PUT /roles/{id}/permissions` with desired permission combinations from the existing catalogue. The new role is stored in SQLite and is immediately grantable without recompiling, deploying, or restarting the application.
+Because roles are data, an administrator holding `roles.manage` creates a new role via `POST /roles` and assigns permissions via `PUT /roles/{id}/permissions` using the existing permission catalogue. The new role takes effect immediately across all operational endpoints without modifying application code, restarting services, or executing database migrations.
 
 ### Q13: How to make a person's "jobs waiting for me" count match what they can actually do?
-**Answer**:
-By compiling the Python decision rules into an **equivalent SQL predicate** (`app/scope.py`). `GET /me/queue`:
-- Compiles the user's active allow-grants and deny-grants for the relevant next stage action.
-- Embeds SoD constraints directly in SQL (`Job.prepared_by != user.id` for checking).
-- Embeds absentee handover logic (`Job.assigned_to IS NULL OR Job.assigned_to == user.id OR Job.assigned_to IN (SELECT id FROM users WHERE status = 'absent')`).
-- Evaluates `COUNT(*)` and keyset pagination over the **exact same predicate**, ensuring total parity between reported counts and actionable items.
+By compiling identical decision logic into SQL predicates (`compile_my_queue_predicate()`). The queue endpoint translates active allow and deny grants, stage requirements, SoD constraints (`prepared_by != me`), and absentee assignment rules directly into a single SQL query. Both the total count (`COUNT(*)`) and paginated items execute over this exact predicate, guaranteeing that reported counts match actionable shipments.
 
 ### Q14: What happens when the system is unsure?
-**Answer**:
-**Fail Closed (Zero-Trust)**:
-If an action is unrecognized, user unknown, job attributes missing or malformed, or an unhandled exception occurs inside the engine, the engine catches the condition, logs an audit entry with decision `DENY`, and returns:
-$$\text{Decision(allowed=False, outcome="DENY", primary\_reason="INDETERMINATE")}$$
-Under no circumstances does indeterminate state resolve to permissive access.
+The service fails closed (zero-trust). If an action is uncatalogued, user unknown, job data corrupted, or an unexpected internal exception occurs, the engine logs a structured audit event with decision `DENY` and reason `INDETERMINATE`. Permissive access is never granted under ambiguous or erroneous conditions.
 
 ---
 
-## 5. Three Additional Deep-Dive Architecture Questions
+## 6. Answers to Three Added Architecture Questions
 
-### Q15: How to guarantee immutable tamper-evidence for compliance audits without blockchain overhead?
-**Answer**:
-We enforce immutability directly at the database engine level using SQLite relational triggers:
-```sql
-CREATE TRIGGER audit_log_no_update BEFORE UPDATE ON audit_log
-BEGIN
-    SELECT RAISE(ABORT, 'Audit log is append-only: UPDATE prohibited');
-END;
+### Q15: How to prevent locking out the organization when revoking or demoting administrators?
+The system enforces a **Last-Admin Lock-Out Guard** inside `revoke_grant()` and role demotion handlers. Before revoking any `super_admin` grant, the service counts active Super Admin grants. If the target is the sole remaining active Super Admin, the transaction aborts with HTTP 403 Forbidden (`LOCKOUT_PREVENTED`), guaranteeing continuous administrative oversight.
 
-CREATE TRIGGER audit_log_no_delete BEFORE DELETE ON audit_log
-BEGIN
-    SELECT RAISE(ABORT, 'Audit log is append-only: DELETE prohibited');
-END;
-```
-Even an internal database administrator or application vulnerability attempting an `UPDATE` or `DELETE` statement against `audit_log` is hard-aborted by the database engine.
+### Q16: How to handle client or branch corrections on miscreated jobs?
+Altering client or branch on an in-flight job could bypass jurisdiction and data confidentiality. The service allows corrections only during `CONFIRMED` stage via `job.update_unfiled`. Once in `PREPARED` or beyond, client/branch fields are immutable; corrections require an Ops Admin rollback (`override_send_back`) with mandatory justification or cancellation and re-creation.
 
-### Q16: How to eliminate race conditions between decision evaluation and job state updates under high concurrency?
-**Answer**:
-By executing authorization and state modification within an **atomic conditional transaction**:
-Instead of a naive read-then-write pattern, state transitions execute:
-```sql
-UPDATE jobs
-SET stage = :new_stage, updated_at = :now, prepared_by = :caller_id
-WHERE id = :job_id AND stage = :expected_stage;
-```
-If two workers attempt to check or file the same job concurrently, exactly one succeeds (`rowcount == 1`). The second worker observes `rowcount == 0`, rolls back the transaction, and returns HTTP 409 Conflict.
-
-### Q17: How to achieve scale performance across 200,000 shipment jobs without caching stale grants?
-**Answer**:
-Caching permission decisions creates severe security vulnerabilities where revoked grants linger until TTL expiration. We target p95 < 200ms **with zero caching** through three database design principles:
-1. **SQLite WAL Mode & Pragma Tuning**: `journal_mode=WAL`, `synchronous=NORMAL`, and a 64MB memory cache eliminate disk write contention.
-2. **Covering B-Tree Indexes**: Composite indexes on `jobs(client_id, branch_id, direction, mode, stage)`, `jobs(stage, assigned_to)`, and `jobs(updated_at, id)`.
-3. **Keyset Pagination**: Eliminating `OFFSET` in favor of keyset seeks `WHERE (updated_at, id) < (cursor_dt, cursor_id)` maintains $O(\log N)$ performance regardless of whether reading page 1 or page 4,000.
+### Q17: Who can view audit logs and how is audit log integrity guaranteed?
+Audit log access requires permission `audit.view`. Responses redact sensitive security internals for non-supervisors. Database triggers abort `UPDATE` and `DELETE` queries on `audit_log`, guaranteeing immutability even against database administrators or application exploits.
 
 ---
 
-## 6. Assumptions and Scope Boundaries
-1. **Authentication Out of Scope**: Callers are identified by the trusted `X-User-Id` gateway header. In production, this would be injected by an mTLS API gateway or JWT reverse proxy.
-2. **Clock Injection**: Time is managed via `app/clock.py`, enabling deterministic test time-travel and past replay without modifying system host time.
-3. **No Frontend**: Swagger UI at `/docs` serves as the interactive testing and operational console.
+## 7. Assumptions & Cut Scope
+
+### Assumptions:
+1. **Authentication Gateway**: Authentication is delegated to an external gateway supplying `X-User-Id` (and optional `X-Run-Id`).
+2. **Injectable Clock**: System time is centralized through `app/clock.py`, enabling past time-travel queries and deterministic testing without changing server clocks.
+3. **UTC Everywhere**: All timestamps are timezone-aware ISO 8601 UTC strings.
+
+### Cut Scope:
+- **No In-Memory Cache**: Redis caching was deliberately omitted to eliminate stale permission windows and ensure immediate revocation enforcement.
+- **No Custom Frontend**: Swagger UI at `/docs` serves as the interactive testing and evaluation interface.
+- **No Complex Graph Hierarchy**: Relational dimensional grants with `NULL` wildcards completely satisfy customs brokerage requirements without graph engine overhead.
