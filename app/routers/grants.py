@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_
 
 from app.db import get_db
-from app.deps import get_current_user
+from app.deps import get_current_user, caller_has_access_or_audit
 from app.models import User, Grant
 from app.grants import create_grants, revoke_grant, describe_user_access
 from app.schemas import (
@@ -42,6 +42,22 @@ def revoke_role_grant(
     return GrantResponse.model_validate(grant)
 
 
+@router.post("/grants/sweep-expired")
+def sweep_expired_grants(
+    caller: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Maintenance sweep: unassign in-flight jobs for users whose grants have expired or roles changed."""
+    if caller.type == "client" or not caller_has_access_or_audit(db, caller):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: sweeping expired grants requires access.manage or audit.view permission",
+        )
+    from app.grants import sweep_expired_grants_and_unassign
+    unassigned = sweep_expired_grants_and_unassign(db, actor_id=caller.id, actor_type=caller.type)
+    return {"status": "SUCCESS", "unassigned_jobs_count": len(unassigned), "unassigned_job_ids": unassigned}
+
+
 @router.get("/users/{id}/grants", response_model=List[GrantResponse])
 def get_user_grants(
     id: str,
@@ -49,7 +65,14 @@ def get_user_grants(
     caller: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """List active grants for a user as of timestamp `at`."""
+    """List active grants for a user as of timestamp `at`. Requires self or access.manage / audit.view."""
+    if caller.id != id:
+        if caller.type == "client" or not caller_has_access_or_audit(db, caller):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Forbidden: inspecting other users' grants requires access.manage or audit.view permission",
+            )
+
     user = db.query(User).filter(User.id == id).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"User '{id}' not found")
@@ -83,5 +106,12 @@ def get_user_access_summary(
     caller: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Plain-English summary of what a person can do and where their grants apply."""
+    """Plain-English summary of what a person can do and where their grants apply. Requires self or access.manage / audit.view."""
+    if caller.id != id:
+        if caller.type == "client" or not caller_has_access_or_audit(db, caller):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Forbidden: inspecting other users' access requires access.manage or audit.view permission",
+            )
+
     return describe_user_access(db, user_id=id)

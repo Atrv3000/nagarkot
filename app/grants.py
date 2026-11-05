@@ -452,3 +452,27 @@ def describe_user_access(db: Session, user_id: str, at: Optional[datetime] = Non
         active_grants_count=len(active_grants),
         plain_english_rules=rules,
     )
+
+
+
+def sweep_expired_grants_and_unassign(
+    db: Session,
+    actor_id: str = "system",
+    actor_type: str = "system",
+) -> List[str]:
+    """Sweep all in-flight jobs assigned to users whose active grants have expired or changed,
+    returning any jobs they can no longer act on back to the pool.
+    """
+    in_flight_stages = ["CONFIRMED", "PREPARED", "CHECKED", "REOPENED"]
+    assigned_users = (
+        db.query(User)
+        .join(Job, Job.assigned_to == User.id)
+        .filter(Job.stage.in_(in_flight_stages))
+        .distinct()
+        .all()
+    )
+    unassigned_total = []
+    for u in assigned_users:
+        unassigned_total.extend(auto_unassign_ineligible_jobs(db, u, actor_id=actor_id, actor_type=actor_type))
+    db.commit()
+    return unassigned_total

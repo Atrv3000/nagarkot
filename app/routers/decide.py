@@ -5,8 +5,9 @@ from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import get_current_user
+from app.deps import get_current_user, caller_has_access_or_audit
 from app.models import User, Job
+from app.scope import compile_jobs_view_predicate
 from app.decision import decide, explain_compare
 from app.schemas import DecisionResponse, CompareResponse
 
@@ -31,9 +32,26 @@ def evaluate_decision(
     caller: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Dry run a decision with complete 8-stage evaluation trace. Not logged to audit log."""
-    eval_time = _parse_time(at)
+    """Dry run a decision with complete 8-stage evaluation trace. Not logged to audit log.
+    Enforces client data isolation, and requires self-query or access.manage / audit.view to evaluate others.
+    """
     job = db.query(Job).filter(Job.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Job '{job_id}' not found")
+
+    # Client user isolation: client user can only evaluate jobs belonging to their own client
+    if caller.type == "client" and job.client_id != caller.client_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Job '{job_id}' not found")
+
+    # Cross-user authorization check: evaluating other users requires access.manage or audit.view
+    if user_id != caller.id:
+        if caller.type == "client" or not caller_has_access_or_audit(db, caller):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Forbidden: evaluating decisions for other users requires access.manage or audit.view permission",
+            )
+
+    eval_time = _parse_time(at)
     return decide(db, user_id=user_id, action=action, job=job, at=eval_time)
 
 
@@ -46,7 +64,24 @@ def compare_decisions(
     caller: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Side-by-side comparison explaining why User A is allowed and User B is denied (or vice versa)."""
+    """Side-by-side comparison explaining why User A is allowed and User B is denied (or vice versa).
+    Requires job visibility and access.manage or audit.view permission.
+    """
+    job = db.query(Job).filter(Job.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Job '{job_id}' not found")
+
+    # Client user isolation
+    if caller.type == "client" and job.client_id != caller.client_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Job '{job_id}' not found")
+
+    # Comparative explainability requires administrative or audit access
+    if caller.type == "client" or not caller_has_access_or_audit(db, caller):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: comparative explainability requires access.manage or audit.view permission",
+        )
+
     user_ids = [u.strip() for u in users.split(",") if u.strip()]
     if len(user_ids) != 2:
         raise HTTPException(
@@ -56,7 +91,6 @@ def compare_decisions(
 
     user_a_id, user_b_id = user_ids[0], user_ids[1]
     eval_time = _parse_time(at)
-    job = db.query(Job).filter(Job.id == job_id).first()
 
     decision_a = decide(db, user_id=user_a_id, action=action, job=job, at=eval_time)
     decision_b = decide(db, user_id=user_b_id, action=action, job=job, at=eval_time)

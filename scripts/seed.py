@@ -120,7 +120,7 @@ def seed(db: Session, now=None):
         "approver": ("Approver", "staff", [JOB_VIEW, JOB_VIEW_INTERNAL, JOB_CANCEL_FILED, JOB_REOPEN, JOB_APPROVE_SENSITIVE]),
         "access_admin": ("Access Admin", "staff", [ACCESS_MANAGE, AUDIT_VIEW, JOB_VIEW]),
         "ops_admin": ("Ops Admin", "staff", [JOB_VIEW, JOB_VIEW_INTERNAL, JOB_OVERRIDE, JOB_REASSIGN, AUDIT_VIEW]),
-        "super_admin": ("Super Admin", "staff", [ACCESS_MANAGE, ACCESS_MANAGE_PRIVILEGED, ROLES_MANAGE, AUDIT_VIEW]),
+        "super_admin": ("Super Admin", "staff", [JOB_VIEW, JOB_VIEW_INTERNAL, ACCESS_MANAGE, ACCESS_MANAGE_PRIVILEGED, ROLES_MANAGE, AUDIT_VIEW]),
         "client_viewer": ("Client Viewer", "client", [JOB_VIEW]),
         "parser": ("Parser", "system", [JOB_CREATE, JOB_UPDATE_UNFILED]),
     }

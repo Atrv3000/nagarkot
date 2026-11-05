@@ -236,6 +236,25 @@ def update_role_permissions(
     for p in new_perms:
         db.add(RolePermission(role_id=role.id, permission=p, added_at=now))
 
+    # If permissions were removed, automatically unassign in-flight jobs for users holding this role
+    if removed_perms:
+        from app.grants import auto_unassign_ineligible_jobs
+        affected_users = (
+            db.query(User)
+            .join(Grant, Grant.user_id == User.id)
+            .filter(
+                Grant.role_id == role.id,
+                Grant.created_at <= now,
+                Grant.valid_from <= now,
+                or_(Grant.valid_to.is_(None), Grant.valid_to >= now),
+                or_(Grant.revoked_at.is_(None), Grant.revoked_at > now),
+            )
+            .distinct()
+            .all()
+        )
+        for u in affected_users:
+            auto_unassign_ineligible_jobs(db, u, actor_id=caller.id, actor_type=caller.type)
+
     log_audit_event(
         db=db,
         actor_id=caller.id,

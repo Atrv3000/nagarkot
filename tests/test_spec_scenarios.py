@@ -73,6 +73,8 @@ def test_cover_grant_activation_and_expiration(db, seed_basic_catalogue):
     t_start = datetime(2026, 11, 1, 0, 0, 0, tzinfo=timezone.utc)
     t_end = datetime(2026, 11, 8, 0, 0, 0, tzinfo=timezone.utc)
 
+    imran = User(id="imran-shaikh", name="Imran", type="staff", status="absent", created_at=t_start)
+    db.add(imran)
     pooja = User(id="pooja-sharma", name="Pooja", type="staff", status="active", created_at=t_start)
     db.add(pooja)
     cover_grant = Grant(

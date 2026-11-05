@@ -7,7 +7,7 @@ This guide provides an architectural walkthrough, a code orientation directory, 
 ## 1. Request Lifecycle Walkthrough
 
 To understand how requests flow through this service, trace an action request:
-`POST /jobs/JOB-SHOWCASE-01/actions/check` with header `X-User-Id: rohit-mehta`
+`POST /jobs/JOB-SHOWCASE-05/actions/check` with header `X-User-Id: rohit-mehta`
 
 ```mermaid
 sequenceDiagram

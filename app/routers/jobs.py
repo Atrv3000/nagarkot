@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import get_current_user, get_actor_run_id
+from app.deps import get_current_user, get_actor_run_id, caller_has_access_or_audit
 from app.models import User, Job, AuditLog
 from app.scope import compile_jobs_view_predicate, paginate_jobs_query
 from app.jobs import create_job, patch_job, execute_job_action, get_job_who_could
@@ -119,7 +119,20 @@ def get_who_could(
     caller: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Audit query: identify everyone who could have performed an action at timestamp `at`."""
+    """Audit query: identify everyone who could have performed an action at timestamp `at`.
+    Requires job visibility and access.manage or audit.view permission.
+    """
+    predicate = compile_jobs_view_predicate(db, caller)
+    job = db.query(Job).filter(Job.id == id, predicate).first()
+    if not job:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Job '{id}' not found")
+
+    if caller.type == "client" or not caller_has_access_or_audit(db, caller):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: who-could audit queries require access.manage or audit.view permission",
+        )
+
     eval_time = None
     if at:
         eval_time = datetime.fromisoformat(at)

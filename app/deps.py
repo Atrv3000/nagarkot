@@ -31,3 +31,35 @@ def get_actor_run_id(
 ) -> Optional[str]:
     """Extract optional parser batch run ID."""
     return x_run_id
+
+
+def caller_has_access_or_audit(db: Session, caller: User) -> bool:
+    """Verify if caller holds active access.manage, access.manage_privileged, or audit.view."""
+    from app.clock import get_now
+    from app.models import Grant, RolePermission
+    from app.permissions import ACCESS_MANAGE, ACCESS_MANAGE_PRIVILEGED, AUDIT_VIEW
+    from sqlalchemy import and_, or_
+
+    now = get_now()
+    active = (
+        db.query(Grant)
+        .join(
+            RolePermission,
+            and_(
+                RolePermission.role_id == Grant.role_id,
+                RolePermission.permission.in_([ACCESS_MANAGE, ACCESS_MANAGE_PRIVILEGED, AUDIT_VIEW]),
+                RolePermission.added_at <= now,
+                or_(RolePermission.removed_at.is_(None), RolePermission.removed_at > now),
+            ),
+        )
+        .filter(
+            Grant.user_id == caller.id,
+            Grant.effect == "allow",
+            Grant.created_at <= now,
+            Grant.valid_from <= now,
+            or_(Grant.valid_to.is_(None), Grant.valid_to >= now),
+            or_(Grant.revoked_at.is_(None), Grant.revoked_at > now),
+        )
+        .first()
+    )
+    return active is not None

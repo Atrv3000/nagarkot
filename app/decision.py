@@ -349,6 +349,12 @@ def decide(
                     raw_grants = []  # Discard grants outside client scope
 
             for g in raw_grants:
+                # If this is an absence cover grant, verify the covered user was actually absent
+                if g.cover_for_user_id:
+                    covered_user = db.query(User).filter(User.id == g.cover_for_user_id).first()
+                    if not covered_user or _reconstruct_user_status_at(db, covered_user, eval_time) != "absent":
+                        continue
+
                 # Check if role contains required permission as of eval_time
                 rp = (
                     db.query(RolePermission)

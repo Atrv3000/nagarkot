@@ -70,6 +70,12 @@ def compile_permission_scope(
             Grant.valid_from <= eval_time,
             or_(Grant.valid_to.is_(None), Grant.valid_to >= eval_time),
             or_(Grant.revoked_at.is_(None), Grant.revoked_at > eval_time),
+            or_(
+                Grant.cover_for_user_id.is_(None),
+                Grant.cover_for_user_id.in_(
+                    db.query(User.id).filter(User.status == "absent").scalar_subquery()
+                ),
+            ),
         )
         .all()
     )
