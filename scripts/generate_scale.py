@@ -13,7 +13,8 @@ from pathlib import Path
 # Add project root to sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.db import engine, init_db
+from app.db import init_db
+from sqlalchemy import create_engine
 from app.models import (
     Branch,
     Client,
@@ -45,29 +46,32 @@ from app.permissions import (
 )
 
 
-def generate_scale(num_users: int = 500, num_jobs: int = 200000, target_db: str = "nagarkot.db"):
-    print(f"--- Generating Scale Dataset: {num_users} Users & {num_jobs} Jobs ---")
+def generate_scale(num_users: int = 500, num_jobs: int = 200000, db_url: str = "sqlite:///./scale.db"):
+    print(f"--- Generating Scale Dataset: {num_users} Users & {num_jobs} Jobs on {db_url} ---")
     start_time = time.perf_counter()
 
-    init_db()
+    if db_url.startswith("sqlite:///") and not db_url.startswith("sqlite:///:memory:"):
+        db_file = Path(db_url.replace("sqlite:///", ""))
+        for f in [db_file, Path(str(db_file) + "-wal"), Path(str(db_file) + "-shm")]:
+            if f.exists():
+                try:
+                    f.unlink()
+                except Exception as e:
+                    print(f"Note removing {f}: {e}")
 
-    conn = engine.raw_connection()
+    scale_engine = create_engine(
+        db_url,
+        connect_args={"check_same_thread": False} if db_url.startswith("sqlite") else {},
+        echo=False,
+    )
+    init_db(target_engine=scale_engine)
+
+    conn = scale_engine.raw_connection()
     cursor = conn.cursor()
 
     cursor.execute("PRAGMA synchronous = NORMAL;")
     cursor.execute("PRAGMA cache_size = -64000;")  # 64MB cache
-
-    # Clear existing data for clean scale test
-    cursor.execute("DELETE FROM approvals;")
-    cursor.execute("DELETE FROM jobs;")
-    cursor.execute("DELETE FROM grants;")
-    cursor.execute("DELETE FROM role_permissions;")
-    cursor.execute("DELETE FROM roles;")
-    cursor.execute("DELETE FROM sod_rules;")
-    cursor.execute("DELETE FROM users;")
-    cursor.execute("DELETE FROM clients;")
-    cursor.execute("DELETE FROM branches;")
-    conn.commit()
+    cursor.execute("PRAGMA journal_mode = WAL;")
 
     random.seed(42)
     now = datetime(2026, 11, 4, 12, 0, 0, tzinfo=timezone.utc)
@@ -146,16 +150,21 @@ def generate_scale(num_users: int = 500, num_jobs: int = 200000, target_db: str 
     ]
 
     # Additional users up to num_users
-    for u_idx in range(22, num_users + 1):
-        if u_idx <= 420:
-            user_rows.append((f"USR-STAFF-{u_idx:03d}", f"Staff Member {u_idx}", "staff", "active", None, now_iso))
-        elif u_idx <= 495:
-            cid = f"C{(u_idx % 10) + 1:02d}"
-            user_rows.append((f"USR-CLIENT-{u_idx:03d}", f"Client Contact {u_idx}", "client", "active", cid, now_iso))
-        else:
-            user_rows.append((f"USR-SYS-{u_idx:03d}", f"System Agent {u_idx}", "system", "active", None, now_iso))
+    if len(user_rows) > num_users:
+        user_rows = user_rows[:num_users]
+    else:
+        for u_idx in range(len(user_rows) + 1, num_users + 1):
+            if u_idx <= 420:
+                user_rows.append((f"USR-STAFF-{u_idx:03d}", f"Staff Member {u_idx}", "staff", "active", None, now_iso))
+            elif u_idx <= 495:
+                cid = f"C{(u_idx % 10) + 1:02d}"
+                user_rows.append((f"USR-CLIENT-{u_idx:03d}", f"Client Contact {u_idx}", "client", "active", cid, now_iso))
+            else:
+                user_rows.append((f"USR-SYS-{u_idx:03d}", f"System Agent {u_idx}", "system", "active", None, now_iso))
 
     cursor.executemany("INSERT INTO users (id, name, type, status, client_id, created_at) VALUES (?, ?, ?, ?, ?, ?);", user_rows)
+
+    valid_user_ids = {u[0] for u in user_rows}
 
     # 4. Seed Grants
     grant_rows = [
@@ -230,6 +239,7 @@ def generate_scale(num_users: int = 500, num_jobs: int = 200000, target_db: str 
             "allow", now_iso, None, "om-agrawal", now_iso, None, None, f"Client grant {u_idx}", None, f"b-cl-{u_idx}"
         ))
 
+    grant_rows = [g for g in grant_rows if g[1] in valid_user_ids]
     cursor.executemany("""
         INSERT INTO grants (
             id, user_id, role_id, client_id, branch_id, direction, mode, effect,
@@ -241,7 +251,7 @@ def generate_scale(num_users: int = 500, num_jobs: int = 200000, target_db: str 
 
     print(f"Inserted {len(user_rows)} users and {len(grant_rows)} grants.")
 
-    # 5. Seed 200,000 Jobs in fast chunks
+    # 5. Seed Jobs in fast chunks
     print(f"Generating and bulk inserting {num_jobs} jobs in chunks of 10,000...")
 
     # Static showcase jobs first
@@ -250,7 +260,14 @@ def generate_scale(num_users: int = 500, num_jobs: int = 200000, target_db: str 
         ("JOB-SHOWCASE-02", "NF-SHOWCASE-PREPARED-SOD", "C03", "BR-MUM", "IMPORT", "AIR", "PREPARED", None, "asha-rao", None, None, 1, "Showcase SoD Conflict", "overnight-parser", now_iso, now_iso),
         ("JOB-SHOWCASE-03", "NF-SHOWCASE-STUCK", "C05", "BR-DEL", "IMPORT", "FCL", "PREPARED", "imran-shaikh", "imran-shaikh", None, None, 1, "Showcase Stuck Ops", "overnight-parser", now_iso, now_iso),
         ("JOB-SHOWCASE-04", "NF-SHOWCASE-ARJUN-REVOKED", "C08", "BR-MUM", "IMPORT", "AIR", "PREPARED", None, "asha-rao", None, None, 1, "Showcase Arjun Revoked", "overnight-parser", now_iso, now_iso),
+        ("JOB-SHOWCASE-05", "NF-SHOWCASE-ROHIT-CHECK", "C01", "BR-MUM", "IMPORT", "AIR", "PREPARED", None, "asha-rao", None, None, 1, "Showcase Rohit Check", "overnight-parser", now_iso, now_iso),
+        ("JOB-SHOWCASE-06", "NF-SHOWCASE-ROHIT-EXPORT", "C01", "BR-MUM", "EXPORT", "AIR", "PREPARED", None, "asha-rao", None, None, 1, "Showcase Rohit Export", "overnight-parser", now_iso, now_iso),
+        ("JOB-SHOWCASE-07", "NF-SHOWCASE-ROHIT-OTHER-BRANCH", "C01", "BR-NS", "IMPORT", "AIR", "PREPARED", None, "asha-rao", None, None, 1, "Showcase Rohit Branch", "overnight-parser", now_iso, now_iso),
+        ("JOB-SHOWCASE-08", "NF-SHOWCASE-DELHI-CONFIRMED", "C05", "BR-DEL", "IMPORT", "FCL", "CONFIRMED", None, None, None, None, 1, "Showcase Delhi Confirmed", "overnight-parser", now_iso, now_iso),
     ]
+    if len(showcase_jobs) > num_jobs:
+        showcase_jobs = showcase_jobs[:num_jobs]
+
     cursor.executemany("""
         INSERT INTO jobs (
             id, ref, client_id, branch_id, direction, mode, stage,
@@ -316,6 +333,7 @@ def generate_scale(num_users: int = 500, num_jobs: int = 200000, target_db: str 
 
     cursor.close()
     conn.close()
+    scale_engine.dispose()
 
     elapsed = time.perf_counter() - start_time
     print(f"\nScale generation completed in {elapsed:.2f} seconds!")
@@ -325,6 +343,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate scale data for Nagarkot Access Control")
     parser.add_argument("--users", type=int, default=500, help="Number of users to generate (default 500)")
     parser.add_argument("--jobs", type=int, default=200000, help="Number of jobs to generate (default 200,000)")
+    parser.add_argument("--db", type=str, default="sqlite:///./scale.db", help="Target database URL (default sqlite:///./scale.db)")
     args = parser.parse_args()
 
-    generate_scale(num_users=args.users, num_jobs=args.jobs)
+    generate_scale(num_users=args.users, num_jobs=args.jobs, db_url=args.db)

@@ -4,6 +4,8 @@ __pycache__/
 *.db
 *.db-wal
 *.db-shm
+scale.db*
+nagarkot.db*
 .pytest_cache/
 .coverage
 htmlcov/

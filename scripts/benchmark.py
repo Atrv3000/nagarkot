@@ -4,6 +4,8 @@ Measures p50, p90, p95, and p99 query latency for /me/queue and /jobs first-page
 queries against a dataset of 200,000 jobs and 500 users.
 Target: p95 latency under 200ms.
 """
+import argparse
+import os
 import statistics
 import time
 import sys
@@ -12,22 +14,41 @@ from pathlib import Path
 # Add project root to sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 from fastapi.testclient import TestClient
+
 from app.main import app
-from app.db import SessionLocal
+from app.db import get_db, init_db
 from app.models import Job, User
 
 
-def run_benchmark(iterations: int = 100):
-    client = TestClient(app)
+def run_benchmark(db_url: str = "sqlite:///./scale.db", iterations: int = 100):
+    engine = create_engine(
+        db_url,
+        connect_args={"check_same_thread": False} if db_url.startswith("sqlite") else {},
+        echo=False,
+    )
+    Session = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
-    db = SessionLocal()
+    def override_get_db():
+        session = Session()
+        try:
+            yield session
+        finally:
+            session.close()
+
+    app.dependency_overrides[get_db] = override_get_db
+    client = TestClient(app, raise_server_exceptions=True)
+
+    db = Session()
     job_count = db.query(Job).count()
     user_count = db.query(User).count()
     db.close()
 
     print("================================================================================")
     print(" NAGARKOT ACCESS CONTROL SERVICE - PERFORMANCE BENCHMARK")
+    print(f" Database:       {db_url}")
     print(f" Database Scale: {job_count:,} Jobs | {user_count:,} Users")
     print(f" Sample Size:    {iterations} iterations per scenario")
     print(" Target SLA:     p95 latency < 200 ms")
@@ -102,8 +123,15 @@ def run_benchmark(iterations: int = 100):
         )
 
     print("\nBenchmark completed successfully.")
+    app.dependency_overrides.clear()
+    engine.dispose()
     return results
 
 
 if __name__ == "__main__":
-    run_benchmark(iterations=100)
+    parser = argparse.ArgumentParser(description="Run performance benchmark")
+    parser.add_argument("--db", type=str, default="sqlite:///./scale.db", help="Target DB to benchmark")
+    parser.add_argument("--iterations", type=int, default=100, help="Number of iterations per test")
+    args = parser.parse_args()
+
+    run_benchmark(db_url=args.db, iterations=args.iterations)

@@ -127,6 +127,7 @@ class Job(Base):
     __table_args__ = (
         Index("idx_jobs_scope_stage", "client_id", "branch_id", "direction", "mode", "stage"),
         Index("idx_jobs_stage_assigned", "stage", "assigned_to"),
+        Index("idx_jobs_stage_scope", "stage", "client_id", "branch_id", "direction", "assigned_to"),
         Index("idx_jobs_updated_id", "updated_at", "id"),
     )
 

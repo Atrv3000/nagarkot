@@ -1,18 +1,15 @@
-.PHONY: setup seed run test scale bench demo clean
+.PHONY: setup seed run run-scale test scale bench demo clean
 
-PYTHON = ./.venv/Scripts/python.exe
-PYTEST = ./.venv/Scripts/pytest.exe
-UVICORN = ./.venv/Scripts/uvicorn.exe
-
-# Fallbacks for Unix/macOS if run in bash
 ifeq ($(OS),Windows_NT)
     PYTHON_CMD = .\.venv\Scripts\python.exe
     PYTEST_CMD = .\.venv\Scripts\pytest.exe
     UVICORN_CMD = .\.venv\Scripts\uvicorn.exe
+    SET_SCALE_DB = set DATABASE_URL=sqlite:///./scale.db &&
 else
     PYTHON_CMD = ./.venv/bin/python
     PYTEST_CMD = ./.venv/bin/pytest
     UVICORN_CMD = ./.venv/bin/uvicorn
+    SET_SCALE_DB = DATABASE_URL=sqlite:///./scale.db
 endif
 
 setup:
@@ -26,14 +23,17 @@ seed:
 run:
 	$(UVICORN_CMD) app.main:app --host 0.0.0.0 --port 8000 --reload
 
+run-scale:
+	$(SET_SCALE_DB) $(UVICORN_CMD) app.main:app --host 0.0.0.0 --port 8000
+
 test:
 	$(PYTEST_CMD) -v tests/
 
 scale:
-	$(PYTHON_CMD) scripts/generate_scale.py --users 500 --jobs 200000
+	$(PYTHON_CMD) scripts/generate_scale.py --users 500 --jobs 200000 --db sqlite:///./scale.db
 
 bench:
-	$(PYTHON_CMD) scripts/benchmark.py
+	$(PYTHON_CMD) scripts/benchmark.py --db sqlite:///./scale.db
 
 demo:
-	$(PYTHON_CMD) scripts/describe_access.py
+	bash scripts/demo.sh
