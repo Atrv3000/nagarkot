@@ -356,16 +356,15 @@ def get_job_who_could(
                 )
             )
 
-    # Look up actual actor from audit log around that time
+    # Look up actual actor from audit log for this action on the job
     actual_event = (
         db.query(AuditLog)
         .filter(
             AuditLog.job_id == job.id,
             AuditLog.action == action,
             AuditLog.decision == "EXECUTE",
-            AuditLog.at <= eval_time,
         )
-        .order_by(AuditLog.at.desc())
+        .order_by(AuditLog.at.asc())
         .first()
     )
     actual_actor = None

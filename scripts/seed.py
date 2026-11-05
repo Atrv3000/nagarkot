@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from app.db import engine, init_db, SessionLocal
 from app.clock import get_now
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from app.models import (
     User,
     Branch,
@@ -64,6 +65,18 @@ def seed(db: Session, now=None):
     db.query(User).delete()
     db.query(Client).delete()
     db.query(Branch).delete()
+    try:
+        db.execute(text("DROP TRIGGER IF EXISTS audit_log_no_delete;"))
+        db.execute(text("DELETE FROM audit_log;"))
+        db.execute(text("""
+            CREATE TRIGGER IF NOT EXISTS audit_log_no_delete
+            BEFORE DELETE ON audit_log
+            BEGIN
+                SELECT RAISE(ABORT, 'Audit log is append-only: DELETE prohibited');
+            END;
+        """))
+    except Exception:
+        pass
     db.commit()
 
     random.seed(42)
@@ -374,6 +387,52 @@ def seed(db: Session, now=None):
     )
     db.add(job_filed)
 
+    t_sh1 = now - timedelta(days=15)
+    db.add(AuditLog(
+        at=t_sh1,
+        actor_id="overnight-parser",
+        actor_type="system",
+        actor_run_id="RUN-SHOWCASE-01",
+        event_type="JOB_CREATE",
+        action="create",
+        decision="EXECUTE",
+        job_id="JOB-SHOWCASE-01",
+        after_state={"stage": "CONFIRMED"},
+    ))
+    db.add(AuditLog(
+        at=t_sh1 + timedelta(hours=1),
+        actor_id="asha-rao",
+        actor_type="staff",
+        event_type="JOB_ACTION",
+        action="prepare",
+        decision="EXECUTE",
+        job_id="JOB-SHOWCASE-01",
+        before_state={"stage": "CONFIRMED"},
+        after_state={"stage": "PREPARED", "prepared_by": "asha-rao"},
+    ))
+    db.add(AuditLog(
+        at=t_sh1 + timedelta(hours=3),
+        actor_id="rohit-mehta",
+        actor_type="staff",
+        event_type="JOB_ACTION",
+        action="check",
+        decision="EXECUTE",
+        job_id="JOB-SHOWCASE-01",
+        before_state={"stage": "PREPARED"},
+        after_state={"stage": "CHECKED", "checked_by": "rohit-mehta"},
+    ))
+    db.add(AuditLog(
+        at=t_sh1 + timedelta(hours=5),
+        actor_id="neha-kulkarni",
+        actor_type="staff",
+        event_type="JOB_ACTION",
+        action="file",
+        decision="EXECUTE",
+        job_id="JOB-SHOWCASE-01",
+        before_state={"stage": "CHECKED"},
+        after_state={"stage": "FILED", "filed_by": "neha-kulkarni"},
+    ))
+
     # 2. NF-SHOWCASE-PREPARED-SOD: PREPARED job Asha prepared in C03 for SoD conflict
     job_sod = Job(
         id="JOB-SHOWCASE-02",
@@ -391,6 +450,29 @@ def seed(db: Session, now=None):
         updated_at=now - timedelta(days=2),
     )
     db.add(job_sod)
+    t_sh2 = now - timedelta(days=3)
+    db.add(AuditLog(
+        at=t_sh2,
+        actor_id="overnight-parser",
+        actor_type="system",
+        actor_run_id="RUN-SHOWCASE-02",
+        event_type="JOB_CREATE",
+        action="create",
+        decision="EXECUTE",
+        job_id="JOB-SHOWCASE-02",
+        after_state={"stage": "CONFIRMED"},
+    ))
+    db.add(AuditLog(
+        at=t_sh2 + timedelta(hours=1),
+        actor_id="asha-rao",
+        actor_type="staff",
+        event_type="JOB_ACTION",
+        action="prepare",
+        decision="EXECUTE",
+        job_id="JOB-SHOWCASE-02",
+        before_state={"stage": "CONFIRMED"},
+        after_state={"stage": "PREPARED", "prepared_by": "asha-rao"},
+    ))
 
     # 3. NF-SHOWCASE-STUCK: Stuck PREPARED job at Delhi-ICD for Ops Admin override demo
     job_stuck = Job(
@@ -410,6 +492,29 @@ def seed(db: Session, now=None):
         updated_at=now - timedelta(days=4),
     )
     db.add(job_stuck)
+    t_sh3 = now - timedelta(days=5)
+    db.add(AuditLog(
+        at=t_sh3,
+        actor_id="overnight-parser",
+        actor_type="system",
+        actor_run_id="RUN-SHOWCASE-03",
+        event_type="JOB_CREATE",
+        action="create",
+        decision="EXECUTE",
+        job_id="JOB-SHOWCASE-03",
+        after_state={"stage": "CONFIRMED"},
+    ))
+    db.add(AuditLog(
+        at=t_sh3 + timedelta(hours=1),
+        actor_id="imran-shaikh",
+        actor_type="staff",
+        event_type="JOB_ACTION",
+        action="prepare",
+        decision="EXECUTE",
+        job_id="JOB-SHOWCASE-03",
+        before_state={"stage": "CONFIRMED"},
+        after_state={"stage": "PREPARED", "prepared_by": "imran-shaikh"},
+    ))
 
     # 4. NF-SHOWCASE-ARJUN-REVOKED: Job assigned to Arjun on C08 and auto-unassigned when grant was revoked yesterday
     job_arjun = Job(
@@ -511,15 +616,165 @@ def seed(db: Session, now=None):
         after_state={"stage": "FILED", "filed_by": "neha-kulkarni"},
     ))
 
-    # Generate remaining ~295 realistic jobs across dimensions and stages
+    # 5. NF-SHOWCASE-ROHIT-CHECK: C01 / Mumbai-Fort / IMPORT / AIR, PREPARED, prepared_by asha-rao
+    t_sh5 = now - timedelta(days=2)
+    job_rohit_ok = Job(
+        id="JOB-SHOWCASE-05",
+        ref="NF-SHOWCASE-ROHIT-CHECK",
+        client_id="C01",
+        branch_id="BR-MUM",
+        direction="IMPORT",
+        mode="AIR",
+        stage="PREPARED",
+        prepared_by="asha-rao",
+        cycle=1,
+        internal_notes="Eligible for Rohit Mehta to check (C01, Mumbai-Fort, IMPORT, AIR)",
+        created_by="overnight-parser",
+        created_at=t_sh5,
+        updated_at=t_sh5 + timedelta(hours=1),
+    )
+    db.add(job_rohit_ok)
+    db.add(AuditLog(
+        at=t_sh5,
+        actor_id="overnight-parser",
+        actor_type="system",
+        actor_run_id="RUN-SHOWCASE-05",
+        event_type="JOB_CREATE",
+        action="create",
+        decision="EXECUTE",
+        job_id="JOB-SHOWCASE-05",
+        after_state={"stage": "CONFIRMED"},
+    ))
+    db.add(AuditLog(
+        at=t_sh5 + timedelta(hours=1),
+        actor_id="asha-rao",
+        actor_type="staff",
+        event_type="JOB_ACTION",
+        action="prepare",
+        decision="EXECUTE",
+        job_id="JOB-SHOWCASE-05",
+        before_state={"stage": "CONFIRMED"},
+        after_state={"stage": "PREPARED", "prepared_by": "asha-rao"},
+    ))
+
+    # 6. NF-SHOWCASE-ROHIT-EXPORT: same but EXPORT, PREPARED
+    t_sh6 = now - timedelta(days=2)
+    job_rohit_exp = Job(
+        id="JOB-SHOWCASE-06",
+        ref="NF-SHOWCASE-ROHIT-EXPORT",
+        client_id="C01",
+        branch_id="BR-MUM",
+        direction="EXPORT",
+        mode="AIR",
+        stage="PREPARED",
+        prepared_by="asha-rao",
+        cycle=1,
+        internal_notes="Rohit denied: direction EXPORT mismatch with grant (IMPORT only)",
+        created_by="overnight-parser",
+        created_at=t_sh6,
+        updated_at=t_sh6 + timedelta(hours=1),
+    )
+    db.add(job_rohit_exp)
+    db.add(AuditLog(
+        at=t_sh6,
+        actor_id="overnight-parser",
+        actor_type="system",
+        actor_run_id="RUN-SHOWCASE-06",
+        event_type="JOB_CREATE",
+        action="create",
+        decision="EXECUTE",
+        job_id="JOB-SHOWCASE-06",
+        after_state={"stage": "CONFIRMED"},
+    ))
+    db.add(AuditLog(
+        at=t_sh6 + timedelta(hours=1),
+        actor_id="asha-rao",
+        actor_type="staff",
+        event_type="JOB_ACTION",
+        action="prepare",
+        decision="EXECUTE",
+        job_id="JOB-SHOWCASE-06",
+        before_state={"stage": "CONFIRMED"},
+        after_state={"stage": "PREPARED", "prepared_by": "asha-rao"},
+    ))
+
+    # 7. NF-SHOWCASE-ROHIT-OTHER-BRANCH: C01 / Nhava Sheva / IMPORT / PREPARED
+    t_sh7 = now - timedelta(days=2)
+    job_rohit_br = Job(
+        id="JOB-SHOWCASE-07",
+        ref="NF-SHOWCASE-ROHIT-OTHER-BRANCH",
+        client_id="C01",
+        branch_id="BR-NS",
+        direction="IMPORT",
+        mode="AIR",
+        stage="PREPARED",
+        prepared_by="asha-rao",
+        cycle=1,
+        internal_notes="Rohit denied: branch Nhava Sheva mismatch with grant (Mumbai-Fort only)",
+        created_by="overnight-parser",
+        created_at=t_sh7,
+        updated_at=t_sh7 + timedelta(hours=1),
+    )
+    db.add(job_rohit_br)
+    db.add(AuditLog(
+        at=t_sh7,
+        actor_id="overnight-parser",
+        actor_type="system",
+        actor_run_id="RUN-SHOWCASE-07",
+        event_type="JOB_CREATE",
+        action="create",
+        decision="EXECUTE",
+        job_id="JOB-SHOWCASE-07",
+        after_state={"stage": "CONFIRMED"},
+    ))
+    db.add(AuditLog(
+        at=t_sh7 + timedelta(hours=1),
+        actor_id="asha-rao",
+        actor_type="staff",
+        event_type="JOB_ACTION",
+        action="prepare",
+        decision="EXECUTE",
+        job_id="JOB-SHOWCASE-07",
+        before_state={"stage": "CONFIRMED"},
+        after_state={"stage": "PREPARED", "prepared_by": "asha-rao"},
+    ))
+
+    # 8. NF-SHOWCASE-DELHI-CONFIRMED: C05 / Delhi-ICD / IMPORT / FCL, CONFIRMED (ready for prepare by cover maker)
+    t_sh8 = now - timedelta(days=1)
+    job_delhi_conf = Job(
+        id="JOB-SHOWCASE-08",
+        ref="NF-SHOWCASE-DELHI-CONFIRMED",
+        client_id="C05",
+        branch_id="BR-DEL",
+        direction="IMPORT",
+        mode="FCL",
+        stage="CONFIRMED",
+        created_by="overnight-parser",
+        created_at=t_sh8,
+        updated_at=t_sh8,
+    )
+    db.add(job_delhi_conf)
+    db.add(AuditLog(
+        at=t_sh8,
+        actor_id="overnight-parser",
+        actor_type="system",
+        actor_run_id="RUN-SHOWCASE-08",
+        event_type="JOB_CREATE",
+        action="create",
+        decision="EXECUTE",
+        job_id="JOB-SHOWCASE-08",
+        after_state={"stage": "CONFIRMED"},
+    ))
+
+    # Generate remaining ~291 realistic jobs across dimensions and stages
     stages = ["CONFIRMED", "PREPARED", "CHECKED", "FILED", "CANCELLED", "REOPENED"]
     directions = ["IMPORT", "EXPORT"]
     modes = ["AIR", "FCL", "LCL"]
     branch_ids = [b.id for b in branches]
     client_ids = [c.id for c in clients]
 
-    print("Generating batch of 295 operational jobs...")
-    for idx in range(1, 296):
+    print("Generating batch of 291 operational jobs...")
+    for idx in range(1, 292):
         c_id = random.choice(client_ids)
         b_id = random.choice(branch_ids)
         dir_val = random.choice(directions)

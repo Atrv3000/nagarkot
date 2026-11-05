@@ -9,6 +9,8 @@ from app.models import User, Grant, Job
 from app.decision import decide
 from app.jobs import execute_job_action
 from app.schemas import JobActionRequest
+from app.scope import compile_my_queue_predicate
+from app.clock import set_time
 
 
 def test_narrow_scope_checker_rohit(db, seed_basic_catalogue):
@@ -173,3 +175,49 @@ def test_client_user_redaction_and_isolation(seeded_client):
         assert item["prepared_by"] is None
         assert item["checked_by"] is None
         assert item["filed_by"] is None
+
+
+def test_seeded_rohit_showcase_jobs_and_queue(seeded_db):
+    """Verify seeded showcase jobs 05, 06, 07 and Rohit Mehta's narrow scope decisions and queue."""
+    now = datetime(2026, 11, 4, 12, 0, 0, tzinfo=timezone.utc)
+    set_time(now)
+
+    job05 = seeded_db.query(Job).filter(Job.id == "JOB-SHOWCASE-05").first()
+    job06 = seeded_db.query(Job).filter(Job.id == "JOB-SHOWCASE-06").first()
+    job07 = seeded_db.query(Job).filter(Job.id == "JOB-SHOWCASE-07").first()
+    job02 = seeded_db.query(Job).filter(Job.id == "JOB-SHOWCASE-02").first()
+
+    assert job05 is not None
+    assert job06 is not None
+    assert job07 is not None
+    assert job02 is not None
+
+    # JOB-SHOWCASE-05: C01 / Mumbai-Fort / IMPORT / AIR / PREPARED -> ALLOW
+    dec05 = decide(seeded_db, user_id="rohit-mehta", action="check", job=job05, at=now)
+    assert dec05.allowed
+    assert dec05.outcome == "ALLOW"
+
+    # JOB-SHOWCASE-06: C01 / Mumbai-Fort / EXPORT / AIR / PREPARED -> DENY (direction mismatch)
+    dec06 = decide(seeded_db, user_id="rohit-mehta", action="check", job=job06, at=now)
+    assert not dec06.allowed
+    assert any(c.code == "GRANT_COVERS_SCOPE" and not c.passed for c in dec06.checks)
+
+    # JOB-SHOWCASE-07: C01 / Nhava Sheva / IMPORT / AIR / PREPARED -> DENY (branch mismatch)
+    dec07 = decide(seeded_db, user_id="rohit-mehta", action="check", job=job07, at=now)
+    assert not dec07.allowed
+    assert any(c.code == "GRANT_COVERS_SCOPE" and not c.passed for c in dec07.checks)
+
+    # JOB-SHOWCASE-02: C03 / Mumbai-Fort / IMPORT / AIR / PREPARED -> DENY (client mismatch)
+    dec02 = decide(seeded_db, user_id="rohit-mehta", action="check", job=job02, at=now)
+    assert not dec02.allowed
+    assert any(c.code == "GRANT_COVERS_SCOPE" and not c.passed for c in dec02.checks)
+
+    # Rohit's queue contains JOB-SHOWCASE-05 among showcase jobs
+    rohit = seeded_db.query(User).filter(User.id == "rohit-mehta").first()
+    predicate = compile_my_queue_predicate(seeded_db, rohit, now)
+    queue_jobs = seeded_db.query(Job).filter(predicate).all()
+    queue_ids = {j.id for j in queue_jobs}
+    assert "JOB-SHOWCASE-05" in queue_ids
+    assert "JOB-SHOWCASE-06" not in queue_ids
+    assert "JOB-SHOWCASE-07" not in queue_ids
+    assert "JOB-SHOWCASE-02" not in queue_ids
