@@ -207,9 +207,9 @@ WHERE id = :job_id AND stage = :expected_stage;
 ```
 If two workers attempt to check or file the same job concurrently, exactly one succeeds (`rowcount == 1`). The second worker observes `rowcount == 0`, rolls back the transaction, and returns HTTP 409 Conflict.
 
-### Q17: How to achieve sub-30ms p95 query latency across 200,000 shipment jobs with complex multidimensional ACLs without caching stale grants?
+### Q17: How to achieve scale performance across 200,000 shipment jobs without caching stale grants?
 **Answer**:
-Caching permission decisions creates severe security vulnerabilities where revoked grants linger until TTL expiration. We achieve sub-30ms latencies **with zero caching** through three database design principles:
+Caching permission decisions creates severe security vulnerabilities where revoked grants linger until TTL expiration. We target p95 < 200ms **with zero caching** through three database design principles:
 1. **SQLite WAL Mode & Pragma Tuning**: `journal_mode=WAL`, `synchronous=NORMAL`, and a 64MB memory cache eliminate disk write contention.
 2. **Covering B-Tree Indexes**: Composite indexes on `jobs(client_id, branch_id, direction, mode, stage)`, `jobs(stage, assigned_to)`, and `jobs(updated_at, id)`.
 3. **Keyset Pagination**: Eliminating `OFFSET` in favor of keyset seeks `WHERE (updated_at, id) < (cursor_dt, cursor_id)` maintains $O(\log N)$ performance regardless of whether reading page 1 or page 4,000.

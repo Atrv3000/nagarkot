@@ -5,13 +5,18 @@ from pathlib import Path
 # Add project root to sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from typing import Optional
+from sqlalchemy.orm import Session
 from app.db import SessionLocal
 from app.models import User
 from app.grants import describe_user_access
 
 
-def describe_all_users():
-    db = SessionLocal()
+def describe_all_users(db: Optional[Session] = None):
+    close_db = False
+    if db is None:
+        db = SessionLocal()
+        close_db = True
     users = db.query(User).order_by(User.type.desc(), User.id.asc()).all()
 
     print("=" * 80)
@@ -34,7 +39,8 @@ def describe_all_users():
     print("\n" + "=" * 80)
     print(f" Total Directory Users Evaluated: {len(users)}")
     print("=" * 80)
-    db.close()
+    if close_db:
+        db.close()
 
 
 if __name__ == "__main__":

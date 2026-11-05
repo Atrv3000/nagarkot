@@ -100,7 +100,7 @@ If another worker advanced the stage milliseconds earlier, `rowcount` returns 0,
 #### Q12: Why did we choose keyset pagination over `LIMIT / OFFSET`?
 **Answer**: At 200,000 jobs, `OFFSET 150000` forces the database engine to scan and discard 150,000 index tuples, degrading query latency from milliseconds to seconds. Keyset pagination (`WHERE (updated_at, id) < (:cursor_dt, :cursor_id)`) leverages B-tree seeks in $O(\log N)$ time.
 
-#### Q13: What SQLite WAL settings enable sub-30ms p95 latencies?
+#### Q13: What SQLite WAL settings optimize scale performance?
 **Answer**: `PRAGMA journal_mode=WAL;` allows concurrent readers without blocking writers. `PRAGMA synchronous=NORMAL;` and `PRAGMA cache_size=-64000;` (64MB memory cache) ensure that index seeks operate in RAM.
 
 #### Q14: How are SQLite append-only triggers implemented?
@@ -112,7 +112,7 @@ BEGIN SELECT RAISE(ABORT, 'Audit log is append-only: UPDATE prohibited'); END;
 This guarantees database-level immutability even if application-level code contains vulnerabilities.
 
 #### Q15: Why is there no in-memory decision caching in v1?
-**Answer**: Caching introduces stale authorization windows where a revoked employee can still perform actions until TTL expires. With indexed SQL queries executing in 10–25ms, caching is unnecessary and introduces security risk.
+**Answer**: Caching introduces stale authorization windows where a revoked employee can still perform actions until TTL expires. Direct indexed SQL execution guarantees zero-lag revocation security, meeting SLA targets for broad queries without the risk of stale grants.
 
 ---
 
