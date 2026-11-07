@@ -12,9 +12,71 @@ from app.models import User, Grant, RolePermission
 from app.permissions import ACCESS_MANAGE
 from app.grants import auto_unassign_ineligible_jobs
 from app.audit import log_audit_event
-from app.schemas import UserResponse, UserStatusUpdate
+from app.schemas import UserResponse, UserStatusUpdate, UserDirectoryItem
 
 router = APIRouter(tags=["User Administration"])
+
+
+def _format_role_name(role_id: str) -> str:
+    role_map = {
+        "super_admin": "Super Admin",
+        "access_admin": "Access Admin",
+        "ops_admin": "Ops Admin",
+        "client_viewer": "Client Viewer",
+        "parser": "Parser",
+    }
+    return role_map.get(role_id, role_id.replace("_", " ").title())
+
+
+@router.get("/users", response_model=List[UserDirectoryItem])
+def list_users(db: Session = Depends(get_db)):
+    """Public directory of personas for client switcher and UI context."""
+    now = get_now()
+    users = db.query(User).order_by(User.id.asc()).all()
+    result = []
+    for u in users:
+        active_grants = (
+            db.query(Grant)
+            .filter(
+                Grant.user_id == u.id,
+                Grant.created_at <= now,
+                Grant.valid_from <= now,
+                or_(Grant.valid_to.is_(None), Grant.valid_to >= now),
+                or_(Grant.revoked_at.is_(None), Grant.revoked_at > now),
+            )
+            .all()
+        )
+        if active_grants:
+            roles = []
+            for g in active_grants:
+                name = _format_role_name(g.role_id)
+                if g.cover_for_user_id:
+                    name += " (Cover)"
+                if name not in roles:
+                    roles.append(name)
+            role_label = ", ".join(roles)
+        else:
+            revoked_grant = db.query(Grant).filter(Grant.user_id == u.id, Grant.revoked_at.isnot(None)).first()
+            if revoked_grant:
+                role_label = f"{_format_role_name(revoked_grant.role_id)} (Revoked)"
+            elif u.type == "client":
+                role_label = "Client Viewer"
+            elif u.type == "system":
+                role_label = "Parser"
+            else:
+                role_label = "None"
+
+        result.append(
+            UserDirectoryItem(
+                id=u.id,
+                name=u.name,
+                type=u.type,
+                status=u.status,
+                client_id=u.client_id,
+                role_label=role_label,
+            )
+        )
+    return result
 
 
 def _caller_can_manage_users(db: Session, caller: User) -> bool:

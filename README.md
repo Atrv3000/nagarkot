@@ -98,11 +98,55 @@ make run
 ```bash
 uvicorn app.main:app --reload --port 8000
 ```
-Open interactive Swagger UI at: **http://127.0.0.1:8000/docs**
+Open the Web UI in your browser: **http://127.0.0.1:8000/ui/** (or http://127.0.0.1:8000/ which automatically redirects to `/ui/`).
+Interactive Swagger UI remains accessible at: **http://127.0.0.1:8000/docs**
 
 ---
 
-## 3. Directory Personas & Plain-English Access Matrix
+## 3. Web User Interface & 6-Step Visual Demo Walkthrough
+
+The service includes a built-in, lightweight Web UI built with plain semantic HTML5, hand-written design-token CSS (supporting light and dark mode, zero CSS frameworks), and vanilla ES modules.
+
+### How to Switch Personas
+Every API request requires the `X-User-Id` HTTP header. The top navigation bar features an **"Acting as:"** persona dropdown. Switching personas instantly re-evaluates personal queues, permissions, and available action buttons across all views and persists your selection in `localStorage`.
+
+### 6-Step Showcase Demo Path in the Web UI
+
+1. **Step 1 — Separation of Duties (Asha Rao blocked on own job)**:
+   - Select **Asha Rao** in the top bar.
+   - Navigate to **Shipments (Jobs)** (`#/jobs`) or open [`#/jobs/JOB-SHOWCASE-02`](http://127.0.0.1:8000/ui/#/jobs/JOB-SHOWCASE-02).
+   - Under **Available Actions**, notice the **"Check & Verify"** button is **disabled**.
+   - The inline badge displays `DENIED` with plain-English explanation: *"Separation of Duties: You prepared this checklist, so the four-eyes rule prohibits you from checking it."*
+2. **Step 2 — Qualified Peer Verification (Priya Nair checks it)**:
+   - Switch the persona dropdown to **Priya Nair** (Senior Checker).
+   - The same shipment ([`#/jobs/JOB-SHOWCASE-02`](http://127.0.0.1:8000/ui/#/jobs/JOB-SHOWCASE-02)) immediately re-evaluates.
+   - The **"Check & Verify"** button is now **enabled** (Green).
+   - Click **"Execute Action"**. In the modal, confirm the check. The lifecycle stepper updates to **CHECKED**.
+3. **Step 3 — Two-Person Rule on Filed Customs Bills (Neha Kulkarni)**:
+   - Switch to **Neha Kulkarni** (Customs Filer).
+   - Open [`#/jobs/JOB-SHOWCASE-01`](http://127.0.0.1:8000/ui/#/jobs/JOB-SHOWCASE-01) (Stage: `FILED`).
+   - Click **"Request Cancellation (Filed)"**.
+   - Enter reason *"Client port cancellation due to dock strike"* and submit.
+   - The UI shows an amber notice: `Sent for approval! Approval ID: APP-...` (Status: `NEEDS_APPROVAL`).
+4. **Step 4 — Compliance Authorization (Sunita Patil)**:
+   - Switch to **Sunita Patil** (Head of Compliance / Approver).
+   - Navigate to **Approvals** (`#/approvals`).
+   - The pending cancellation for `JOB-SHOWCASE-01` appears.
+   - Click **"Approve"**, enter mandatory justification *"Reviewed client documentation; approved"*, and confirm. The shipment is formally cancelled under two-person governance.
+5. **Step 5 — Restricted 4D Scope (Rohit Mehta)**:
+   - Switch to **Rohit Mehta** (Restricted Checker for C01 / Mumbai-Fort / IMPORT).
+   - Navigate to **My Queue** (`#/queue`). Notice `JOB-SHOWCASE-05` (Import, Mumbai) is present in his queue.
+   - Open [`#/jobs/JOB-SHOWCASE-06`](http://127.0.0.1:8000/ui/#/jobs/JOB-SHOWCASE-06) (EXPORT): Checking is **disabled** with reason *"No active access grant matches this action and shipment scope"*.
+   - Open [`#/jobs/JOB-SHOWCASE-07`](http://127.0.0.1:8000/ui/#/jobs/JOB-SHOWCASE-07) (Nhava Sheva branch): Checking is **disabled** due to branch scope mismatch.
+6. **Step 6 — Tamper-Evident Audit Verification (Om Agrawal)**:
+   - Switch to **Om Agrawal** (Super Admin).
+   - Navigate to **Audit Trail** (`#/audit`).
+   - Filter by Job ID `JOB-SHOWCASE-01` or event type `APPROVAL_DECISION`.
+   - Click the **▶** arrow on any audit row to inspect the full event payload, before/after stages, and grant IDs used. Notice all events are permanently protected by SQLite `ABORT` triggers.
+
+---
+
+## 4. Directory Personas & Plain-English Access Matrix
 
 | # | Persona | Type / Status | Role(s) | Plain-English Scope & Governance Rules |
 | :---: | :--- | :--- | :--- | :--- |
@@ -130,7 +174,7 @@ Open interactive Swagger UI at: **http://127.0.0.1:8000/docs**
 
 ---
 
-## 4. Showcase Job References
+## 5. Showcase Job References
 
 Use these fixed jobs in Swagger (`/docs`) or curl to verify specific features:
 
@@ -148,7 +192,7 @@ Use these fixed jobs in Swagger (`/docs`) or curl to verify specific features:
 
 ---
 
-## 5. Performance Benchmark Results (200,000 Jobs, 500 Users)
+## 6. Performance Benchmark Results (200,000 Jobs, 500 Users)
 
 The brief sets an SLA target of **p95 < 200 ms** across 200,000 jobs.
 
@@ -173,7 +217,7 @@ Tested against a freshly generated `scale.db` (200,000 shipments, 500 users) acr
 
 ---
 
-## 6. API Cheat Sheet & Curl Examples
+## 7. API Cheat Sheet & Curl Examples
 
 All endpoints authenticate callers via the `X-User-Id` HTTP header.
 
@@ -233,7 +277,7 @@ curl -s -X POST "http://127.0.0.1:8000/grants" \
 
 ---
 
-## 7. Assumptions & What Was Cut
+## 8. Assumptions & What Was Cut
 
 ### Assumptions:
 1. **Authentication Gateway**: Authentication is delegated to an external identity provider / reverse proxy that injects `X-User-Id` (and optional `X-Run-Id`).
@@ -247,7 +291,7 @@ curl -s -X POST "http://127.0.0.1:8000/grants" \
 
 ---
 
-## 8. Sources and AI Assistance
+## 9. Sources and AI Assistance
 
 - **AI Assistance**: An AI coding assistant was used for scaffolding, writing boilerplate tests, and drafting documentation. Every design decision and line of policy logic was reviewed, verified, and tested by the author.
 - **External Libraries & Documentation Consulted**:

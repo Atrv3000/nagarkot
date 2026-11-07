@@ -23,6 +23,15 @@ class UserStatusUpdate(BaseModel):
     reason: str = Field(..., min_length=3, description="Reason for status change")
 
 
+class UserDirectoryItem(BaseModel):
+    id: str
+    name: str
+    type: str
+    status: str
+    client_id: Optional[str] = None
+    role_label: str
+
+
 # ---------------------------------------------------------
 # Role Schemas
 # ---------------------------------------------------------

@@ -1,8 +1,10 @@
 """FastAPI application initialization, router registration, and lifecycle events."""
 from contextlib import asynccontextmanager
+from pathlib import Path
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.db import init_db
 from app.routers import (
@@ -55,11 +57,16 @@ app.include_router(roles.router)
 app.include_router(users.router)
 app.include_router(audit.router)
 
+# Mount Web UI static assets
+STATIC_DIR = Path(__file__).resolve().parent / "static"
+STATIC_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/ui", StaticFiles(directory=str(STATIC_DIR), html=True), name="ui")
+
 
 @app.get("/", include_in_schema=False)
 def root():
-    """Redirect root path to interactive Swagger documentation."""
-    return RedirectResponse(url="/docs")
+    """Redirect root path to Web UI."""
+    return RedirectResponse(url="/ui/")
 
 
 @app.exception_handler(Exception)
