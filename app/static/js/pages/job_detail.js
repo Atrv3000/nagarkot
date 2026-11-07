@@ -625,8 +625,6 @@ async function loadWhoCouldTab(container, job) {
       resultsArea.appendChild(errCard);
     }
   };
-    }
-  };
 
   analyzeBtn.onclick = runAnalysis;
   // Trigger initial run
