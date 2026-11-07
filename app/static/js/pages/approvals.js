@@ -9,6 +9,7 @@ import { router } from "../router.js";
 import { openModal } from "../components/modal.js";
 import { showToast } from "../components/toast.js";
 import { formatRelativeTime, formatFullDateTime } from "../labels.js";
+import { escapeHtml } from "../utils.js";
 
 export async function renderApprovalsPage(container) {
   document.getElementById("view-heading").textContent = "Two-Person Compliance Approvals";
@@ -109,8 +110,8 @@ async function loadApprovals(tbody, subtitleEl, statusFilter) {
         <tr>
           <td colspan="7">
             <div class="empty-state-card" style="border: none;">
-              <h3>No ${statusFilter.toUpperCase()} Approvals</h3>
-              <p>There are no sensitive action requests in ${statusFilter} status.</p>
+              <h3>No ${escapeHtml(statusFilter.toUpperCase())} Approvals</h3>
+              <p>There are no sensitive action requests in ${escapeHtml(statusFilter)} status.</p>
             </div>
           </td>
         </tr>
@@ -134,7 +135,7 @@ async function loadApprovals(tbody, subtitleEl, statusFilter) {
       // Job Ref
       const tdJob = document.createElement("td");
       const jobLink = document.createElement("a");
-      jobLink.href = `#/jobs/${app.job_id}`;
+      jobLink.href = `#/jobs/${encodeURIComponent(app.job_id)}`;
       jobLink.style.color = "var(--primary)";
       jobLink.style.fontWeight = "600";
       jobLink.textContent = app.job_id;
@@ -235,7 +236,7 @@ async function loadApprovals(tbody, subtitleEl, statusFilter) {
         <td colspan="7">
           <div class="error-state-card" style="border: none;">
             <h3>Error loading approvals</h3>
-            <p>${err.message || 'Unable to retrieve approval list.'}</p>
+            <p>${escapeHtml(err.message || 'Unable to retrieve approval list.')}</p>
           </div>
         </td>
       </tr>

@@ -1,11 +1,22 @@
-"""Tests for public GET /users directory endpoint."""
+"""Tests for authenticated GET /users directory endpoint."""
 import pytest
 from starlette.testclient import TestClient
 
 
-def test_users_directory_returns_all_personas(seeded_client: TestClient):
-    """GET /users returns all 21 seeded personas with safe metadata and role labels."""
-    resp = seeded_client.get("/users")
+def test_users_directory_auth_required(seeded_client: TestClient):
+    """GET /users requires X-User-Id header and rejects unauthenticated or unknown callers."""
+    # Missing header -> 401
+    resp_no_header = seeded_client.get("/users")
+    assert resp_no_header.status_code == 401
+
+    # Unknown user -> 401
+    resp_unknown = seeded_client.get("/users", headers={"X-User-Id": "unknown-user-id"})
+    assert resp_unknown.status_code == 401
+
+
+def test_users_directory_staff_sees_all_personas(seeded_client: TestClient):
+    """Staff caller (Asha Rao) receives all 21 seeded personas with safe metadata and role labels."""
+    resp = seeded_client.get("/users", headers={"X-User-Id": "asha-rao"})
     assert resp.status_code == 200
     data = resp.json()
 
@@ -44,3 +55,15 @@ def test_users_directory_returns_all_personas(seeded_client: TestClient):
 
     assert "arjun-reddy" in users_by_id
     assert "Revoked" in users_by_id["arjun-reddy"]["role_label"]
+
+
+def test_users_directory_client_sees_only_themselves(seeded_client: TestClient):
+    """Client caller (Rajesh Gupta) only sees their own record, maintaining staff privacy."""
+    resp = seeded_client.get("/users", headers={"X-User-Id": "rajesh-gupta"})
+    assert resp.status_code == 200
+    data = resp.json()
+
+    assert len(data) == 1
+    assert data[0]["id"] == "rajesh-gupta"
+    assert data[0]["type"] == "client"
+    assert data[0]["client_id"] == "C01"

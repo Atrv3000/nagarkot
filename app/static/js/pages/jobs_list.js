@@ -8,6 +8,7 @@ import { state } from "../state.js";
 import { router } from "../router.js";
 import { createStageBadge } from "../components/badge.js";
 import { formatRelativeTime } from "../labels.js";
+import { escapeHtml } from "../utils.js";
 
 let currentCursor = null;
 let allJobs = [];
@@ -133,7 +134,7 @@ async function loadJobs(tbody, subtitleEl, paginationEl, isFirstPage = false) {
       allJobs.push(job);
       const row = document.createElement("tr");
       row.className = "clickable";
-      row.onclick = () => router.navigate(`#/jobs/${job.id}`);
+      row.onclick = () => router.navigate(`#/jobs/${encodeURIComponent(job.id)}`);
 
       // Ref
       const tdRef = document.createElement("td");
@@ -212,7 +213,7 @@ async function loadJobs(tbody, subtitleEl, paginationEl, isFirstPage = false) {
         <td colspan="9">
           <div class="error-state-card" style="border: none;">
             <h3>Error Loading Shipments</h3>
-            <p>${err.message || 'Unable to load shipments list.'}</p>
+            <p>${escapeHtml(err.message || 'Unable to load shipments list.')}</p>
           </div>
         </td>
       </tr>

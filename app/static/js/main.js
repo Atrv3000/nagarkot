@@ -131,8 +131,21 @@ async function initApp() {
 
   try {
     // 1. Fetch User Personas Directory for Switcher
-    const users = await api.get("/users");
+    // Bootstrap request using asha-rao (with fallback to first staff) to retrieve full directory
+    const BOOTSTRAP_USER = "asha-rao";
+    const persistedUser = localStorage.getItem("nagarkot_acting_user");
+
+    const users = await api.get("/users", {}, { headers: { "X-User-Id": BOOTSTRAP_USER } });
     state.setUsers(users);
+
+    // Persisted selection in localStorage must still win on reload
+    if (persistedUser && users.some(u => u.id === persistedUser)) {
+      state.setUser(persistedUser, false);
+    } else {
+      const defaultUser = users.find(u => u.id === BOOTSTRAP_USER) || users.find(u => u.type === "staff") || users[0];
+      state.setUser(defaultUser ? defaultUser.id : BOOTSTRAP_USER, false);
+    }
+
     setupUserSwitcher(users);
 
     // 2. Initialize Router with content container

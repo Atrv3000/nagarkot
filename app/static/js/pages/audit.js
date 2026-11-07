@@ -6,6 +6,7 @@
 import { api } from "../api.js";
 import { state } from "../state.js";
 import { formatFullDateTime } from "../labels.js";
+import { escapeHtml } from "../utils.js";
 
 export async function renderAuditPage(container) {
   document.getElementById("view-heading").textContent = "Immutable Compliance Audit Trail";
@@ -249,7 +250,7 @@ async function loadAuditTrail(tbody, subtitleEl, params) {
       const tdTarget = document.createElement("td");
       if (r.job_id) {
         const jLink = document.createElement("a");
-        jLink.href = `#/jobs/${r.job_id}`;
+        jLink.href = `#/jobs/${encodeURIComponent(r.job_id)}`;
         jLink.style.color = "var(--primary)";
         jLink.style.fontWeight = "600";
         jLink.textContent = r.job_id;
@@ -302,21 +303,51 @@ async function loadAuditTrail(tbody, subtitleEl, params) {
       detailBox.style.fontSize = "12px";
       detailBox.style.lineHeight = "1.5";
 
-      let parts = [];
       if (r.reason_codes && r.reason_codes.length > 0) {
-        parts.push(`<div><strong>Reason Codes:</strong> <span style="color: var(--danger-text);">${r.reason_codes.join(', ')}</span></div>`);
+        const div = document.createElement("div");
+        const strong = document.createElement("strong");
+        strong.textContent = "Reason Codes: ";
+        const span = document.createElement("span");
+        span.style.color = "var(--danger-text)";
+        span.textContent = r.reason_codes.join(", ");
+        div.appendChild(strong);
+        div.appendChild(span);
+        detailBox.appendChild(div);
       }
       if (r.grant_ids_used && r.grant_ids_used.length > 0) {
-        parts.push(`<div><strong>Grants Utilized:</strong> ${r.grant_ids_used.join(', ')}</div>`);
+        const div = document.createElement("div");
+        const strong = document.createElement("strong");
+        strong.textContent = "Grants Utilized: ";
+        div.appendChild(strong);
+        div.appendChild(document.createTextNode(r.grant_ids_used.join(", ")));
+        detailBox.appendChild(div);
       }
       if (r.before_state) {
-        parts.push(`<div><strong>Before State:</strong> <code>${JSON.stringify(r.before_state)}</code></div>`);
+        const div = document.createElement("div");
+        const strong = document.createElement("strong");
+        strong.textContent = "Before State: ";
+        const code = document.createElement("code");
+        code.textContent = JSON.stringify(r.before_state);
+        div.appendChild(strong);
+        div.appendChild(code);
+        detailBox.appendChild(div);
       }
       if (r.after_state) {
-        parts.push(`<div><strong>After State:</strong> <code>${JSON.stringify(r.after_state)}</code></div>`);
+        const div = document.createElement("div");
+        const strong = document.createElement("strong");
+        strong.textContent = "After State: ";
+        const code = document.createElement("code");
+        code.textContent = JSON.stringify(r.after_state);
+        div.appendChild(strong);
+        div.appendChild(code);
+        detailBox.appendChild(div);
+      }
+      if (!detailBox.hasChildNodes()) {
+        const em = document.createElement("em");
+        em.textContent = "No additional state payload stored for this audit event.";
+        detailBox.appendChild(em);
       }
 
-      detailBox.innerHTML = parts.join("") || "<em>No additional state payload stored for this audit event.</em>";
       detailTd.appendChild(detailBox);
       detailRow.appendChild(detailTd);
       tbody.appendChild(detailRow);
@@ -337,7 +368,7 @@ async function loadAuditTrail(tbody, subtitleEl, params) {
         <td colspan="7">
           <div class="empty-state-card" style="border: none;">
             <h3>Audit Access Restricted</h3>
-            <p>${err.message || 'Viewing the audit log requires audit.view permission. Switch to Om Agrawal (Super Admin) or Meera Iyer (Ops Admin) above.'}</p>
+            <p>${escapeHtml(err.message || 'Viewing the audit log requires audit.view permission. Switch to Om Agrawal (Super Admin) or Meera Iyer (Ops Admin) above.')}</p>
           </div>
         </td>
       </tr>

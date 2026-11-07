@@ -98,14 +98,20 @@ export function createDecisionChecklist(decision) {
 
     if (decision.matched_grants && decision.matched_grants.length > 0) {
       const p = document.createElement("div");
-      p.innerHTML = `<strong>Matched Allow Grants:</strong> ${decision.matched_grants.join(', ')}`;
+      const strong = document.createElement("strong");
+      strong.textContent = "Matched Allow Grants: ";
+      p.appendChild(strong);
+      p.appendChild(document.createTextNode(decision.matched_grants.join(", ")));
       grantsBox.appendChild(p);
     }
     if (decision.denying_grants && decision.denying_grants.length > 0) {
       const p = document.createElement("div");
       p.style.color = "var(--danger-text)";
       p.style.marginTop = "6px";
-      p.innerHTML = `<strong>Overriding Deny Grants:</strong> ${decision.denying_grants.join(', ')}`;
+      const strong = document.createElement("strong");
+      strong.textContent = "Overriding Deny Grants: ";
+      p.appendChild(strong);
+      p.appendChild(document.createTextNode(decision.denying_grants.join(", ")));
       grantsBox.appendChild(p);
     }
     container.appendChild(grantsBox);

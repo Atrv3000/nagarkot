@@ -61,8 +61,8 @@ async function request(path, options = {}) {
     ...(options.headers || {}),
   };
 
-  // Automatically attach active persona identity
-  if (state.currentUser) {
+  // Automatically attach active persona identity if not explicitly specified
+  if (state.currentUser && !headers["X-User-Id"]) {
     headers["X-User-Id"] = state.currentUser;
   }
 
@@ -102,7 +102,7 @@ async function request(path, options = {}) {
 }
 
 export const api = {
-  get(path, queryParams = {}) {
+  get(path, queryParams = {}, options = {}) {
     const search = new URLSearchParams();
     for (const [key, val] of Object.entries(queryParams)) {
       if (val !== undefined && val !== null && val !== "") {
@@ -111,7 +111,7 @@ export const api = {
     }
     const queryString = search.toString();
     const fullPath = queryString ? `${path}?${queryString}` : path;
-    return request(fullPath, { method: "GET" });
+    return request(fullPath, { method: "GET", ...options });
   },
 
   post(path, body = {}) {

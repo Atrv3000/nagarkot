@@ -8,6 +8,7 @@ import { state } from "../state.js";
 import { router } from "../router.js";
 import { createStageBadge } from "../components/badge.js";
 import { formatRelativeTime } from "../labels.js";
+import { escapeHtml } from "../utils.js";
 
 let currentCursor = null;
 let queueItems = [];
@@ -140,7 +141,7 @@ async function loadQueue(tbody, subtitleEl, paginationEl, isFirstPage = false) {
       queueItems.push(job);
       const row = document.createElement("tr");
       row.className = "clickable";
-      row.onclick = () => router.navigate(`#/jobs/${job.id}`);
+      row.onclick = () => router.navigate(`#/jobs/${encodeURIComponent(job.id)}`);
 
       // Ref
       const tdRef = document.createElement("td");
@@ -214,7 +215,7 @@ async function loadQueue(tbody, subtitleEl, paginationEl, isFirstPage = false) {
         <td colspan="8">
           <div class="error-state-card" style="border: none; margin: 12px 0;">
             <h3>Failed to load queue</h3>
-            <p>${err.message || 'Error communicating with access service.'}</p>
+            <p>${escapeHtml(err.message || 'Error communicating with access service.')}</p>
           </div>
         </td>
       </tr>

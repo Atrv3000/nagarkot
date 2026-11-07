@@ -29,10 +29,19 @@ def _format_role_name(role_id: str) -> str:
 
 
 @router.get("/users", response_model=List[UserDirectoryItem])
-def list_users(db: Session = Depends(get_db)):
-    """Public directory of personas for client switcher and UI context."""
+def list_users(
+    caller: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Directory of personas for client switcher and UI context. Requires auth.
+    Client users only see their own record. Staff and system users see the full directory.
+    """
     now = get_now()
-    users = db.query(User).order_by(User.id.asc()).all()
+    if caller.type == "client":
+        users = [caller]
+    else:
+        users = db.query(User).order_by(User.id.asc()).all()
+
     result = []
     for u in users:
         active_grants = (

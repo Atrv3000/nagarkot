@@ -46,17 +46,29 @@ export async function renderJobDetailPage(container, params) {
     const job = await api.get(`/jobs/${jobId}`);
     renderJobView(container, job);
   } catch (err) {
-    container.innerHTML = `
-      <div class="card">
-        <div class="card-body">
-          <div class="error-state-card" style="border: none;">
-            <h3>Unable to access shipment ${jobId}</h3>
-            <p>${err.message || 'Job not found or not visible within your scope.'}</p>
-            <a href="#/queue" class="btn btn-primary">Return to My Queue</a>
-          </div>
-        </div>
-      </div>
-    `;
+    container.innerHTML = "";
+    const card = document.createElement("div");
+    card.className = "card";
+    const body = document.createElement("div");
+    body.className = "card-body";
+    const errCard = document.createElement("div");
+    errCard.className = "error-state-card";
+    errCard.style.border = "none";
+    const h3 = document.createElement("h3");
+    h3.textContent = `Unable to access shipment ${jobId}`;
+    const p = document.createElement("p");
+    p.textContent = err.message || "Job not found or not visible within your scope.";
+    const link = document.createElement("a");
+    link.href = "#/queue";
+    link.className = "btn btn-primary";
+    link.textContent = "Return to My Queue";
+
+    errCard.appendChild(h3);
+    errCard.appendChild(p);
+    errCard.appendChild(link);
+    body.appendChild(errCard);
+    card.appendChild(body);
+    container.appendChild(card);
   }
 }
 
@@ -79,7 +91,7 @@ function renderJobView(container, job) {
   const backBtn = document.createElement("a");
   backBtn.href = "#/queue";
   backBtn.className = "btn btn-secondary";
-  backBtn.innerHTML = "← Back";
+  backBtn.textContent = "← Back";
 
   const titleGroup = document.createElement("div");
   const title = document.createElement("h2");
@@ -102,7 +114,7 @@ function renderJobView(container, job) {
   headerRight.style.gap = "10px";
 
   const explainBtn = document.createElement("a");
-  explainBtn.href = `#/explain?job_id=${job.id}`;
+  explainBtn.href = `#/explain?job_id=${encodeURIComponent(job.id)}`;
   explainBtn.className = "btn btn-secondary";
   explainBtn.innerHTML = "<span>🔍</span> Inspect Decision Engine";
 
@@ -330,7 +342,12 @@ async function evaluateAllActions(grid, job) {
       grid.appendChild(card);
     });
   } catch (err) {
-    grid.innerHTML = `<div class="error-state-card" style="grid-column: 1 / -1;">Failed to evaluate actions: ${err.message}</div>`;
+    grid.innerHTML = "";
+    const errCard = document.createElement("div");
+    errCard.className = "error-state-card";
+    errCard.style.gridColumn = "1 / -1";
+    errCard.textContent = `Failed to evaluate actions: ${err.message || 'error'}`;
+    grid.appendChild(errCard);
   }
 }
 
@@ -488,7 +505,12 @@ async function loadHistoryTab(container, jobId) {
 
     container.appendChild(timeline);
   } catch (err) {
-    container.innerHTML = `<div class="error-state-card" style="border: none;">Unable to load job history: ${err.message}</div>`;
+    container.innerHTML = "";
+    const errCard = document.createElement("div");
+    errCard.className = "error-state-card";
+    errCard.style.border = "none";
+    errCard.textContent = `Unable to load job history: ${err.message || 'error'}`;
+    container.appendChild(errCard);
   }
 }
 
@@ -561,22 +583,27 @@ async function loadWhoCouldTab(container, job) {
       if (data.who_could_have_performed.length > 0) {
         const table = document.createElement("table");
         table.className = "data-table";
-        table.innerHTML = `
-          <thead>
-            <tr>
-              <th>Eligible User</th>
-              <th>Matched Grants</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${data.who_could_have_performed.map(u => `
-              <tr>
-                <td><strong>${u.user_id}</strong></td>
-                <td>${u.matched_grants.join(', ') || 'Direct grant'}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        `;
+        const thead = document.createElement("thead");
+        thead.innerHTML = "<tr><th>Eligible User</th><th>Matched Grants</th></tr>";
+        const tbody = document.createElement("tbody");
+
+        data.who_could_have_performed.forEach(u => {
+          const tr = document.createElement("tr");
+          const tdUser = document.createElement("td");
+          const strong = document.createElement("strong");
+          strong.textContent = u.user_id;
+          tdUser.appendChild(strong);
+
+          const tdGrants = document.createElement("td");
+          tdGrants.textContent = u.matched_grants.join(", ") || "Direct grant";
+
+          tr.appendChild(tdUser);
+          tr.appendChild(tdGrants);
+          tbody.appendChild(tr);
+        });
+
+        table.appendChild(thead);
+        table.appendChild(tbody);
         resultsArea.appendChild(table);
       } else {
         const noOne = document.createElement("p");
@@ -585,12 +612,19 @@ async function loadWhoCouldTab(container, job) {
         resultsArea.appendChild(noOne);
       }
     } catch (err) {
-      resultsArea.innerHTML = `
-        <div class="empty-state-card" style="border: none;">
-          <h3>Audit Analysis Unavailable</h3>
-          <p>${err.message || 'Who-could analysis requires access.manage or audit.view permission.'}</p>
-        </div>
-      `;
+      resultsArea.innerHTML = "";
+      const errCard = document.createElement("div");
+      errCard.className = "empty-state-card";
+      errCard.style.border = "none";
+      const h3 = document.createElement("h3");
+      h3.textContent = "Audit Analysis Unavailable";
+      const p = document.createElement("p");
+      p.textContent = err.message || "Who-could analysis requires access.manage or audit.view permission.";
+      errCard.appendChild(h3);
+      errCard.appendChild(p);
+      resultsArea.appendChild(errCard);
+    }
+  };
     }
   };
 

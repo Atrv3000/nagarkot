@@ -9,6 +9,7 @@ import { openModal } from "../components/modal.js";
 import { showToast } from "../components/toast.js";
 import { createScopeChip, createUserStatusBadge } from "../components/badge.js";
 import { formatFullDateTime } from "../labels.js";
+import { escapeHtml } from "../utils.js";
 
 export async function renderAccessPage(container) {
   document.getElementById("view-heading").textContent = "Access Directory & Capability Matrix";
@@ -323,7 +324,7 @@ async function loadUserAccess(container, targetUserId) {
     container.innerHTML = `
       <div class="error-state-card" style="border: none;">
         <h3>Unable to load user access</h3>
-        <p>${err.message || 'Error querying user grants.'}</p>
+        <p>${escapeHtml(err.message || 'Error querying user grants.')}</p>
       </div>
     `;
   }

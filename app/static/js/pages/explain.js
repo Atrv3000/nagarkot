@@ -7,6 +7,7 @@
 import { api } from "../api.js";
 import { state } from "../state.js";
 import { createDecisionChecklist } from "../components/checklist.js";
+import { escapeHtml } from "../utils.js";
 
 const POPULAR_SHOWCASE_JOBS = [
   { id: "JOB-SHOWCASE-01", label: "JOB-SHOWCASE-01 (FILED - Two-Person Rule)" },
@@ -250,7 +251,7 @@ function setupSingleInspector(container, initialJobId, initialAction) {
       resultArea.innerHTML = `
         <div class="error-state-card" style="border: none;">
           <h3>Pipeline Evaluation Failed</h3>
-          <p>${err.message || 'Unable to execute decision evaluation.'}</p>
+          <p>${escapeHtml(err.message || 'Unable to execute decision evaluation.')}</p>
         </div>
       `;
     }
@@ -424,7 +425,7 @@ function setupCompareView(container, initialJobId, initialAction) {
       compareResultArea.innerHTML = `
         <div class="error-state-card" style="border: none;">
           <h3>Comparison Failed</h3>
-          <p>${err.message || 'Unable to execute compare query. Verify both users and shipment ID.'}</p>
+          <p>${escapeHtml(err.message || 'Unable to execute compare query. Verify both users and shipment ID.')}</p>
         </div>
       `;
     }

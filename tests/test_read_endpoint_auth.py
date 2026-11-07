@@ -26,6 +26,12 @@ def test_unauthorized_user_grants_access_blocked(seeded_client: TestClient):
     assert r.status_code == 200
     assert r.json()["user_id"] == "rajesh-gupta"
 
+    # Rajesh (client user) sees only himself in /users directory (no staff leakage)
+    r = seeded_client.get("/users", headers={"X-User-Id": "rajesh-gupta"})
+    assert r.status_code == 200
+    assert len(r.json()) == 1
+    assert r.json()[0]["id"] == "rajesh-gupta"
+
 
 def test_unauthorized_decide_and_compare_blocked(seeded_client: TestClient):
     """Zoya and Rajesh cannot evaluate other users or run explain/compare."""
