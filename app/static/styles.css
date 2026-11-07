@@ -4,6 +4,7 @@
  */
 
 :root {
+  color-scheme: light;
   /* Design Tokens - Color Palette (Light Theme Default) */
   --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
@@ -91,6 +92,7 @@
 /* Dark Mode Token Overrides */
 @media (prefers-color-scheme: dark) {
   :root {
+    color-scheme: dark;
     --bg-app: #090d16;
     --bg-surface: #111827;
     --bg-surface-elevated: #1f2937;
@@ -339,11 +341,33 @@ body {
   font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
-  background: transparent;
-  border: none;
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
   outline: none;
   cursor: pointer;
   max-width: 280px;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.user-switcher-select:focus,
+.user-switcher-select:hover {
+  border-color: var(--primary);
+}
+
+.user-switcher-select option,
+.user-switcher-select optgroup,
+.form-select option,
+.form-select optgroup {
+  background-color: var(--bg-surface-elevated);
+  color: var(--text-primary);
+}
+
+.user-switcher-select optgroup,
+.form-select optgroup {
+  font-weight: 700;
+  color: var(--text-muted);
 }
 
 .user-role-badge {
