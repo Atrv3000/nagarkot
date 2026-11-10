@@ -14,6 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.db import init_db
+from app.clock import get_now
 from sqlalchemy import create_engine
 from app.models import (
     Branch,
@@ -74,7 +75,7 @@ def generate_scale(num_users: int = 500, num_jobs: int = 200000, db_url: str = "
     cursor.execute("PRAGMA journal_mode = WAL;")
 
     random.seed(42)
-    now = datetime(2026, 11, 4, 12, 0, 0, tzinfo=timezone.utc)
+    now = get_now()
     now_iso = now.isoformat()
     t_cat = datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc).isoformat()
 

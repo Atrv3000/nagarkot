@@ -80,9 +80,10 @@ def seed(db: Session, now=None):
     db.commit()
 
     random.seed(42)
-    if now is None:
-        now = datetime(2026, 11, 4, 12, 0, 0, tzinfo=timezone.utc)
-    t_start = now - timedelta(days=35)
+    default_clock = now is None
+    if default_clock:
+        now = get_now()
+    t_start = min(now - timedelta(days=35), datetime(2026, 9, 29, 12, 0, 0, tzinfo=timezone.utc))
     t_catalogue = datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
 
     print("Seeding branches and clients...")
@@ -551,7 +552,7 @@ def seed(db: Session, now=None):
     ))
 
     # Audit events for the historical "who could have changed it on the 3rd" demo (~30 days ago)
-    t_demo_historical = now - timedelta(days=32)
+    t_demo_historical = datetime(2026, 10, 3, 12, 0, 0, tzinfo=timezone.utc) if default_clock else now - timedelta(days=32)
     job_hist_demo = Job(
         id="JOB-HIST-DEMO-01",
         ref="NF-IMP-AIR-OCT03",
