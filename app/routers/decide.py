@@ -28,6 +28,7 @@ def evaluate_decision(
     user_id: str = Query(..., description="Target user ID to evaluate"),
     action: str = Query(..., description="Action to evaluate"),
     job_id: str = Query(..., description="Target Job ID"),
+    reason: Optional[str] = Query(None, description="Optional action reason"),
     at: Optional[str] = Query(None, description="Optional ISO timestamp for historical 'as of' replay"),
     caller: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -52,7 +53,7 @@ def evaluate_decision(
             )
 
     eval_time = _parse_time(at)
-    return decide(db, user_id=user_id, action=action, job=job, at=eval_time)
+    return decide(db, user_id=user_id, action=action, job=job, at=eval_time, reason=reason)
 
 
 @router.get("/explain/compare", response_model=CompareResponse)

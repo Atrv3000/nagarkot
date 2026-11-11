@@ -295,8 +295,9 @@ async function evaluateAllActions(grid, job) {
       const card = document.createElement("div");
 
       const isAllowed = dec?.allowed === true;
-      const isNeedsApproval = dec?.outcome === "NEEDS_APPROVAL";
-      const isActionable = isAllowed || isNeedsApproval;
+      const isReasonRequired = dec?.primary_reason === "REASON_REQUIRED";
+      const isNeedsApproval = dec?.outcome === "NEEDS_APPROVAL" || (isReasonRequired && ["cancel_filed", "reopen"].includes(action));
+      const isActionable = isAllowed || isNeedsApproval || isReasonRequired;
 
       card.className = `action-card ${!isActionable ? 'action-card-disabled' : ''}`;
 
@@ -307,7 +308,8 @@ async function evaluateAllActions(grid, job) {
       title.className = "action-title";
       title.textContent = meta.label;
 
-      const badge = createOutcomeBadge(dec?.outcome || "DENY");
+      const badgeOutcome = isNeedsApproval ? "NEEDS_APPROVAL" : (isReasonRequired ? "ALLOW" : (dec?.outcome || "DENY"));
+      const badge = createOutcomeBadge(badgeOutcome);
       cardHead.appendChild(title);
       cardHead.appendChild(badge);
       card.appendChild(cardHead);
@@ -315,12 +317,14 @@ async function evaluateAllActions(grid, job) {
       const reason = document.createElement("div");
       reason.className = "action-reason-text";
 
-      if (isAllowed) {
+      if (isNeedsApproval) {
         reason.className += " action-reason-allowed";
-        reason.textContent = "Permitted under active grants and four-eyes policy.";
-      } else if (isNeedsApproval) {
+        reason.textContent = "Action requires formal two-person Compliance Approval (reason required in dialog).";
+      } else if (isAllowed || isReasonRequired) {
         reason.className += " action-reason-allowed";
-        reason.textContent = "Action requires formal two-person Compliance Approval.";
+        reason.textContent = isReasonRequired
+          ? "Permitted under active grants (mandatory justification required in dialog)."
+          : "Permitted under active grants and four-eyes policy.";
       } else {
         reason.className += " action-reason-denied";
         const friendly = getFriendlyReason(dec?.primary_reason);
