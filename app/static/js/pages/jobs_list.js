@@ -101,6 +101,7 @@ export async function renderJobsListPage(container) {
     { id: "JOB-SHOWCASE-06", label: "06 (Export Deny)" },
     { id: "JOB-SHOWCASE-07", label: "07 (Branch Deny)" },
     { id: "JOB-SHOWCASE-08", label: "08 (Delhi Cover)" },
+    { id: "JOB-HIST-DEMO-01", label: "Oct 3 Time-Travel (Hist-01)" },
   ];
 
   showcaseJobs.forEach(sj => {
