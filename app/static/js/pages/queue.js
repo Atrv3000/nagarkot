@@ -150,6 +150,13 @@ async function loadQueue(tbody, subtitleEl, paginationEl, isFirstPage = false) {
       refBold.textContent = job.ref;
       tdRef.appendChild(refBold);
 
+      const idSub = document.createElement("div");
+      idSub.style.fontSize = "11px";
+      idSub.style.color = "var(--text-muted)";
+      idSub.style.fontFamily = "var(--font-mono)";
+      idSub.textContent = job.id;
+      tdRef.appendChild(idSub);
+
       // Client
       const tdClient = document.createElement("td");
       tdClient.textContent = job.client_id;

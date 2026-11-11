@@ -41,17 +41,79 @@ export async function renderJobsListPage(container) {
   titleGroup.appendChild(subtitle);
 
   const headerActions = document.createElement("div");
+  headerActions.style.display = "flex";
+  headerActions.style.alignItems = "center";
+  headerActions.style.gap = "8px";
+
+  const searchInput = document.createElement("input");
+  searchInput.type = "text";
+  searchInput.className = "form-input";
+  searchInput.placeholder = "Search loaded jobs (e.g. SOD, SHOWCASE)...";
+  searchInput.style.maxWidth = "260px";
+  searchInput.style.padding = "6px 12px";
+  searchInput.oninput = () => {
+    const term = searchInput.value.trim().toLowerCase();
+    const rows = tableBody.querySelectorAll("tr.clickable");
+    rows.forEach(r => {
+      const text = r.textContent.toLowerCase();
+      r.style.display = text.includes(term) ? "" : "none";
+    });
+  };
+
   const refreshBtn = document.createElement("button");
   refreshBtn.className = "btn btn-secondary";
   refreshBtn.innerHTML = "<span>↻</span> Refresh";
   refreshBtn.onclick = () => loadJobs(tableBody, subtitle, paginationContainer, true);
 
+  headerActions.appendChild(searchInput);
   headerActions.appendChild(refreshBtn);
   header.appendChild(titleGroup);
   header.appendChild(headerActions);
 
   const body = document.createElement("div");
   body.className = "card-body";
+
+  // Showcase Demo Quick Jump Bar
+  const showcaseBar = document.createElement("div");
+  showcaseBar.style.display = "flex";
+  showcaseBar.style.flexWrap = "wrap";
+  showcaseBar.style.alignItems = "center";
+  showcaseBar.style.gap = "8px";
+  showcaseBar.style.marginBottom = "16px";
+  showcaseBar.style.padding = "10px 14px";
+  showcaseBar.style.backgroundColor = "var(--bg-app)";
+  showcaseBar.style.border = "1px solid var(--border-color)";
+  showcaseBar.style.borderRadius = "var(--radius-md)";
+  showcaseBar.style.fontSize = "12px";
+
+  const label = document.createElement("span");
+  label.style.fontWeight = "700";
+  label.style.color = "var(--text-muted)";
+  label.textContent = "⭐ Showcase Demo Shipments:";
+  showcaseBar.appendChild(label);
+
+  const showcaseJobs = [
+    { id: "JOB-SHOWCASE-01", label: "01 (Filed)" },
+    { id: "JOB-SHOWCASE-02", label: "02 (SoD Conflict)" },
+    { id: "JOB-SHOWCASE-03", label: "03 (Stuck)" },
+    { id: "JOB-SHOWCASE-04", label: "04 (Arjun Revoked)" },
+    { id: "JOB-SHOWCASE-05", label: "05 (Rohit Import)" },
+    { id: "JOB-SHOWCASE-06", label: "06 (Export Deny)" },
+    { id: "JOB-SHOWCASE-07", label: "07 (Branch Deny)" },
+    { id: "JOB-SHOWCASE-08", label: "08 (Delhi Cover)" },
+  ];
+
+  showcaseJobs.forEach(sj => {
+    const link = document.createElement("a");
+    link.href = `#/jobs/${encodeURIComponent(sj.id)}`;
+    link.className = "btn btn-secondary";
+    link.style.padding = "4px 8px";
+    link.style.fontSize = "11px";
+    link.textContent = sj.label;
+    showcaseBar.appendChild(link);
+  });
+
+  body.appendChild(showcaseBar);
 
   const tableWrapper = document.createElement("div");
   tableWrapper.className = "table-container";
@@ -142,6 +204,13 @@ async function loadJobs(tbody, subtitleEl, paginationEl, isFirstPage = false) {
       refBold.style.color = "var(--primary)";
       refBold.textContent = job.ref;
       tdRef.appendChild(refBold);
+
+      const idSub = document.createElement("div");
+      idSub.style.fontSize = "11px";
+      idSub.style.color = "var(--text-muted)";
+      idSub.style.fontFamily = "var(--font-mono)";
+      idSub.textContent = job.id;
+      tdRef.appendChild(idSub);
 
       // Client
       const tdClient = document.createElement("td");
